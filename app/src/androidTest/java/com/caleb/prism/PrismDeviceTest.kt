@@ -26,8 +26,13 @@ class PrismDeviceTest {
     private var activity: MainActivity? = null
     private val evidence = File(context.getExternalFilesDir(null), "review").apply { mkdirs() }
 
-    private fun launch(scene: Scene = Scene.AURORA, source: AudioSource = AudioSource.MICROPHONE) {
-        context.getSharedPreferences("prism", 0).edit().clear().putInt("scene", scene.ordinal).putInt("source", source.ordinal).commit()
+    private fun launch(scene: Scene = Scene.AURORA, source: AudioSource = AudioSource.MICROPHONE,
+                       audioEnabled: Boolean = false, enabledScenes: Set<Scene> = emptySet()) {
+        val prefs = context.getSharedPreferences("prism", 0).edit().clear().putInt("scene", scene.id).putInt("source", source.ordinal)
+        (enabledScenes + if (audioEnabled) setOf(scene) else emptySet()).forEach {
+            prefs.putBoolean("scene.${it.name}.audioEnabled", true)
+        }
+        prefs.commit()
         device.wakeUp()
         device.setOrientationNatural()
         activity = instrumentation.startActivitySync(Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as MainActivity
@@ -98,7 +103,7 @@ class PrismDeviceTest {
     @Test fun b_systemAudioCapturesRealPlaybackAndStops() {
         instrumentation.uiAutomation.grantRuntimePermission(context.packageName, Manifest.permission.RECORD_AUDIO)
         if (android.os.Build.VERSION.SDK_INT >= 33) instrumentation.uiAutomation.grantRuntimePermission(context.packageName, Manifest.permission.POST_NOTIFICATIONS)
-        launch(Scene.PULSE, AudioSource.SYSTEM)
+        launch(Scene.AURORA, AudioSource.SYSTEM, enabledScenes = Scene.entries.toSet())
         click("Connect audio")
         val consent = device.wait(Until.findObject(By.res("android:id/button1")), 5000)
             ?: device.wait(Until.findObject(By.text(Pattern.compile("Start (now|recording|sharing)|Share screen"))), 5000)
@@ -128,13 +133,23 @@ class PrismDeviceTest {
             assertTrue("Playback PCM must drive bass, got ${levels.bass}", levels.bass > 0.2f)
             assertTrue("Playback PCM must drive midrange, got ${levels.mid}", levels.mid > 0.05f)
             assertTrue("Playback PCM must drive treble, got ${levels.high}", levels.high > 0.02f)
-            screenshot("07-pulse-system-live")
-            click("Strings")
+            ShaderProbe(context, evidence).use { probe ->
+                for (scene in Scene.entries) probe.verifyResponse(scene, levels, "captured")
+            }
+            screenshot("07-aurora-system-live")
+            click("Kaleido")
             SystemClock.sleep(1200)
-            screenshot("08-strings-system-live")
-            click("Nova")
+            assertTrue("Enabled scenes keep the active capture", AudioEngine.status.value.running)
+            screenshot("08-kaleido-system-live")
+            click("Wormhole")
             SystemClock.sleep(1200)
-            screenshot("09-nova-system-live")
+            screenshot("09-wormhole-system-live")
+            click("Tune")
+            click("Audio")
+            screenshot("09-audio-overlay-live")
+            adjust("Reaction strength", 0.8f)
+            assertTrue(SettingsStore(context).load().audioAmount > 1.7f)
+            click("Done")
             track.pause()
             SystemClock.sleep(3000)
             assertTrue("Silence must decay", AudioEngine.levels.energy < 0.02f)
@@ -147,7 +162,7 @@ class PrismDeviceTest {
 
     @Test fun c_microphoneLifecycleAndAmbientIsolation() {
         instrumentation.uiAutomation.grantRuntimePermission(context.packageName, Manifest.permission.RECORD_AUDIO)
-        launch(Scene.PULSE)
+        launch(Scene.AURORA, audioEnabled = true)
         click("Connect audio")
         assertTrue(AudioEngine.status.value.running)
         assertEquals(AudioSource.MICROPHONE, AudioEngine.status.value.source)
@@ -158,9 +173,18 @@ class PrismDeviceTest {
         assertTrue(device.wait(Until.hasObject(By.text("PRISM")), 5000))
         SystemClock.sleep(800)
         assertTrue("Microphone should resume the authorized session", AudioEngine.status.value.running)
-        click("Ambient")
+        click("Kaleido")
+        assertFalse("A scene with audio disabled must stop capture", AudioEngine.status.value.running)
+        assertFalse(SettingsStore(context).load().audioEnabled)
         click("Aurora")
-        assertFalse("Ambient scenes must not capture audio", AudioEngine.status.value.running)
+        assertTrue("Each scene remembers its own audio toggle", SettingsStore(context).load().audioEnabled)
+        click("Connect audio")
+        assertTrue(AudioEngine.status.value.running)
+        refreshTree()
+        device.findObject(By.desc("React to audio")).click()
+        SystemClock.sleep(500)
+        assertFalse("Disabling audio must stop capture immediately", AudioEngine.status.value.running)
+        assertFalse(SettingsStore(context).load().audioEnabled)
         screenshot("10-ambient-no-audio")
         device.setOrientationLeft()
         SystemClock.sleep(1200)
@@ -171,7 +195,7 @@ class PrismDeviceTest {
     @Test fun d_cancelledCaptureDoesNotStartListening() {
         instrumentation.uiAutomation.grantRuntimePermission(context.packageName, Manifest.permission.RECORD_AUDIO)
         if (android.os.Build.VERSION.SDK_INT >= 33) instrumentation.uiAutomation.grantRuntimePermission(context.packageName, Manifest.permission.POST_NOTIFICATIONS)
-        launch(Scene.PULSE, AudioSource.SYSTEM)
+        launch(Scene.KALEIDO, AudioSource.SYSTEM, audioEnabled = true)
         click("Connect audio")
         assertTrue(device.wait(Until.hasObject(By.res("android:id/button1")), 5000))
         device.pressBack()
@@ -267,5 +291,39 @@ class PrismDeviceTest {
         refreshTree()
         assertTrue(device.hasObject(By.text("Done")))
         device.setOrientationNatural()
+    }
+
+    @Test fun g_everyPatternRespondsToEachBandAndOffIsExact() {
+        ShaderProbe(context, evidence).use { probe ->
+            for (frequency in listOf(93.75, 1007.8125, 6000.0)) {
+                val analyzer = SpectrumAnalyzer()
+                val samples = ShortArray(2048) { (sin(2 * PI * frequency * it / 48000) * 0.015 * Short.MAX_VALUE).toInt().toShort() }
+                var levels = AudioLevels()
+                repeat(8) { levels = analyzer.analyze(samples) }
+                for (scene in Scene.entries) probe.verifyResponse(scene, levels, "quiet-${frequency.toInt()}")
+            }
+        }
+    }
+
+    @Test fun h_legacySceneMigrationAndAudioPreferencePersistence() {
+        val prefs = context.getSharedPreferences("prism", 0)
+        val store = SettingsStore(context)
+        prefs.edit().clear().putInt("scene", 6).putFloat("scene.JULIA.zoom", 1.8f).commit()
+        assertEquals("Julia must survive the removal of earlier scene IDs", Scene.JULIA, store.load().scene)
+        assertEquals(1.8f, store.load().zoom, 0f)
+        for (retired in listOf(3, 4, 5)) {
+            prefs.edit().putInt("scene", retired).commit()
+            assertEquals(Scene.AURORA, store.load().scene)
+            assertFalse(store.load().audioEnabled)
+        }
+        for (scene in Scene.entries) {
+            val settings = VisualSettings.defaults(scene).copy(audioEnabled = true, audioAmount = 1.7f, source = AudioSource.SYSTEM)
+            store.save(settings)
+            assertEquals(settings, store.load())
+            store.saveLook(settings)
+            store.save(settings.copy(audioEnabled = false))
+            assertFalse("Recalling a look cannot enable capture", store.loadLook(scene, AudioSource.SYSTEM).audioEnabled)
+            assertEquals(1.7f, store.loadLook(scene, AudioSource.SYSTEM).audioAmount, 0f)
+        }
     }
 }

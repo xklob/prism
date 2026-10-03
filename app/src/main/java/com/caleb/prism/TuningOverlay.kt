@@ -81,7 +81,7 @@ fun TuningOverlay(
             Column(Modifier.align(if (landscape) Alignment.BottomEnd else Alignment.BottomCenter)
                 .then(controlsWidth).navigationBarsPadding().padding(horizontal = 20.dp).padding(bottom = 8.dp)) {
                 Row(Modifier.fillMaxWidth().alpha(otherAlpha), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    val tabs = listOf("Geometry", "Color", "Motion") + if (s.scene.reactive) listOf("Audio") else emptyList()
+                    val tabs = listOf("Geometry", "Color", "Motion", "Audio")
                     tabs.forEach { name ->
                         TextButton(onClick = { tab = name }, modifier = Modifier.weight(1f).height(44.dp)
                             .background(if (tab == name) OverlayInk.copy(alpha = 0.58f) else OverlayInk.copy(alpha = 0.18f), CircleShape),
@@ -101,9 +101,6 @@ fun TuningOverlay(
                             "Geometry" -> {
                                 val detail = when (s.scene) {
                                     Scene.KALEIDO -> "${3 + (s.complexity * 6).toInt()} levels"
-                                    Scene.PULSE -> "${9 + (s.complexity * 16).toInt()} layers"
-                                    Scene.STRINGS -> "${14 + (s.complexity * 30).toInt()} strands"
-                                    Scene.NOVA -> "${7 + (s.complexity * 14).toInt()} layers"
                                     Scene.JULIA -> "${40 + (s.complexity * 104).toInt()} iterations"
                                     else -> "${(s.complexity * 100).roundToInt()}%"
                                 }
@@ -144,20 +141,35 @@ fun TuningOverlay(
                             }
                             "Audio" -> {
                                 Row(Modifier.fillMaxWidth().alpha(otherAlpha), verticalAlignment = Alignment.CenterVertically) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text("React to audio", style = ReadableText, fontSize = 13.sp)
+                                        Text("Remembered for ${s.scene.title}", style = ReadableText, fontSize = 10.sp)
+                                    }
+                                    Switch(s.audioEnabled, { change(s.copy(audioEnabled = it)) }, Modifier.semantics { contentDescription = "React to audio" })
+                                }
+                                Row(Modifier.fillMaxWidth().alpha(otherAlpha), verticalAlignment = Alignment.CenterVertically) {
                                     AudioSource.entries.forEach { source ->
                                         TextButton(onClick = { change(s.copy(source = source)) }, modifier = Modifier.weight(1f), contentPadding = PaddingValues(4.dp)) {
                                             Text(source.label, style = ReadableText, fontSize = 11.sp, color = if (source == s.source) OverlayAccent else Color.White)
                                         }
                                     }
-                                    TextButton(onClick = if (status.running) disconnect else connect, enabled = !connecting, contentPadding = PaddingValues(4.dp)) {
+                                    TextButton(onClick = if (status.running) disconnect else connect, enabled = s.audioEnabled && !connecting, contentPadding = PaddingValues(4.dp)) {
                                         Text(if (connecting) "Wait…" else if (status.running) "Stop" else "Connect", style = ReadableText, fontSize = 11.sp)
                                     }
                                 }
+                                Column(Modifier.alpha(otherAlpha)) {
+                                    AudioBandMeters(status.running)
+                                    Text(if (!s.audioEnabled) "Enable audio to make this pattern follow sound."
+                                        else if (!status.running) "Choose an input, then Connect. Quiet audio is boosted automatically."
+                                        else "Bass expands · Mids deform · Treble adds detail", style = ReadableText, fontSize = 10.sp,
+                                        modifier = Modifier.padding(vertical = 6.dp))
+                                }
                                 if (status.message != null) Text(status.message, style = ReadableText, fontSize = 10.sp, modifier = Modifier.alpha(otherAlpha))
+                                slider("Reaction strength", s.audioAmount, 0f..2.5f, "${(s.audioAmount * 100).roundToInt()}%") { change(s.copy(audioAmount = it)) }
                                 slider("Audio sensitivity", s.sensitivity, 0.4f..4f, "%.1f×".format(s.sensitivity)) { change(s.copy(sensitivity = it)) }
-                                slider("Bass influence", s.bassGain, 0f..2.5f, "%.1f×".format(s.bassGain)) { change(s.copy(bassGain = it)) }
-                                slider("Mid influence", s.midGain, 0f..2.5f, "%.1f×".format(s.midGain)) { change(s.copy(midGain = it)) }
-                                slider("Treble influence", s.trebleGain, 0f..2.5f, "%.1f×".format(s.trebleGain)) { change(s.copy(trebleGain = it)) }
+                                slider("Bass / expansion", s.bassGain, 0f..2.5f, "%.1f×".format(s.bassGain)) { change(s.copy(bassGain = it)) }
+                                slider("Mids / shape", s.midGain, 0f..2.5f, "%.1f×".format(s.midGain)) { change(s.copy(midGain = it)) }
+                                slider("Treble / detail", s.trebleGain, 0f..2.5f, "%.1f×".format(s.trebleGain)) { change(s.copy(trebleGain = it)) }
                                 slider("Response smoothing", s.smoothing, 0f..1f, "${(s.smoothing * 100).roundToInt()}%") { change(s.copy(smoothing = it)) }
                             }
                         }
@@ -168,6 +180,26 @@ fun TuningOverlay(
                     TextButton(onClick = { store.saveLook(s); saved = true; notice = "Look saved for ${s.scene.title}" }) { Text("Save", style = ReadableText, fontSize = 11.sp) }
                     TextButton(onClick = { change(store.loadLook(s.scene, s.source).copy(paused = s.paused)); notice = "Saved look restored" }, enabled = saved) { Text("Recall", style = ReadableText, fontSize = 11.sp, color = if (saved) Color.White else Color.LightGray.copy(alpha = 0.6f)) }
                     TextButton(onClick = { change(s.resetLook()); notice = "Scene defaults restored" }) { Text("Reset", style = ReadableText, fontSize = 11.sp) }
+                }
+            }
+        }
+    }
+}
+
+@Composable private fun AudioBandMeters(running: Boolean) {
+    var levels by remember { mutableStateOf(AudioLevels()) }
+    LaunchedEffect(running) {
+        if (!running) levels = AudioLevels()
+        while (running) { levels = AudioEngine.levels; delay(50) }
+    }
+    Row(Modifier.fillMaxWidth().padding(vertical = 5.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+        listOf("Bass" to levels.bass, "Mids" to levels.mid, "Treble" to levels.high).forEach { (name, level) ->
+            Column(Modifier.weight(1f).semantics { contentDescription = "$name input ${(level * 100).roundToInt()} percent" }) {
+                Text(name, style = ReadableText, fontSize = 10.sp)
+                Canvas(Modifier.fillMaxWidth().height(9.dp)) {
+                    val start = Offset(0f, size.height / 2)
+                    drawLine(Color.White.copy(alpha = 0.25f), start, Offset(size.width, start.y), 2.dp.toPx())
+                    drawLine(OverlayAccent, start, Offset(size.width * level, start.y), 2.dp.toPx())
                 }
             }
         }

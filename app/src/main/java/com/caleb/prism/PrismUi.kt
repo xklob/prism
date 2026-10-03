@@ -52,7 +52,6 @@ fun PrismApp(
 ) {
     var fullscreen by rememberSaveable { mutableStateOf(false) }
     var tuning by rememberSaveable { mutableStateOf(false) }
-    var category by rememberSaveable { mutableStateOf(settings.scene.reactive) }
     var surface by remember { mutableStateOf<PrismSurface?>(null) }
     val status by AudioEngine.status.collectAsStateWithLifecycle()
     LaunchedEffect(fullscreen) { onImmersive(fullscreen) }
@@ -83,7 +82,7 @@ fun PrismApp(
                             Spacer(Modifier.width(10.dp))
                             Text("PRISM", color = Color.White, fontSize = 19.sp, letterSpacing = 5.sp, fontWeight = FontWeight.SemiBold)
                             Spacer(Modifier.weight(1f))
-                            StatusPill(if (settings.paused) "PAUSED" else if (settings.scene.reactive) "REACTIVE" else "AMBIENT", if (status.running) Mint else Lilac)
+                            StatusPill(if (settings.paused) "PAUSED" else if (!settings.audioEnabled) "AMBIENT" else if (status.running) "AUDIO LIVE" else "AUDIO READY", if (status.running) Mint else Lilac)
                         }
                         if (!landscape) {
                             Spacer(Modifier.height(34.dp))
@@ -97,20 +96,21 @@ fun PrismApp(
                     Column(panelModifier.background(Brush.verticalGradient(listOf(Color.Transparent, Ink.copy(alpha = 0.95f), Ink)))) {
                         Spacer(Modifier.height(if (landscape) 8.dp else 42.dp))
                         Column(Modifier.navigationBarsPadding().verticalScroll(rememberScrollState()).padding(bottom = 16.dp)) {
-                            if (settings.scene.reactive) {
+                            if (settings.audioEnabled) {
                                 AudioPanel(settings.source, status, connecting, { onChange(settings.copy(source = it)) }, onConnect, onDisconnect)
                                 Spacer(Modifier.height(20.dp))
                             }
                             Row(Modifier.padding(horizontal = 24.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                Text("EXPLORE", color = Muted, fontSize = 10.sp, letterSpacing = 2.sp, fontWeight = FontWeight.SemiBold)
+                                Text("PATTERNS", color = Muted, fontSize = 10.sp, letterSpacing = 2.sp, fontWeight = FontWeight.SemiBold)
                                 Spacer(Modifier.weight(1f))
-                                CategoryTab("Ambient", !category) { category = false }
-                                Spacer(Modifier.width(4.dp))
-                                CategoryTab("Reactive", category) { category = true }
+                                Text("React to audio", color = Color.White, fontSize = 12.sp)
+                                Spacer(Modifier.width(10.dp))
+                                Switch(settings.audioEnabled, { onChange(settings.copy(audioEnabled = it)) },
+                                    Modifier.semantics { contentDescription = "React to audio" })
                             }
                             Spacer(Modifier.height(12.dp))
                             LazyRow(contentPadding = PaddingValues(horizontal = 24.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                items(Scene.entries.filter { it.reactive == category }) { scene ->
+                                items(Scene.entries) { scene ->
                                     SceneCard(scene, scene == settings.scene) { onChange(settings.copy(scene = scene, paused = false)) }
                                 }
                             }
@@ -158,11 +158,6 @@ fun PrismApp(
     }
 }
 
-@Composable private fun CategoryTab(label: String, selected: Boolean, click: () -> Unit) {
-    Text(label, Modifier.clip(CircleShape).background(if (selected) Color.White.copy(alpha = 0.12f) else Color.Transparent)
-        .selectable(selected, onClick = click, role = Role.Tab).padding(horizontal = 13.dp, vertical = 12.dp), color = if (selected) Color.White else Muted, fontSize = 12.sp)
-}
-
 @Composable private fun SceneCard(scene: Scene, selected: Boolean, click: () -> Unit) {
     Column(Modifier.width(112.dp).height(118.dp).clip(RoundedCornerShape(18.dp))
         .background(Brush.verticalGradient(listOf(scene.accent.copy(alpha = if (selected) 0.23f else 0.10f), Panel)))
@@ -183,7 +178,7 @@ fun PrismApp(
         val center = Offset(size.width / 2, size.height / 2)
         val radius = min(size.width, size.height) * 0.46f
         when (scene) {
-            Scene.AURORA, Scene.STRINGS -> for (line in 0..6) {
+            Scene.AURORA -> for (line in 0..6) {
                 val path = Path()
                 for (x in 0..50) {
                     val fx = x / 50f
@@ -197,7 +192,7 @@ fun PrismApp(
                 val path = Path()
                 for (i in 0..180) {
                     val a = i * 2 * PI / 180
-                    val r = radius * ring / 3f * (0.76 + 0.24 * cos(a * if (scene == Scene.NOVA) 7 else 6))
+                    val r = radius * ring / 3f * (0.76 + 0.24 * cos(a * 6))
                     val x = center.x + cos(a).toFloat() * r.toFloat()
                     val y = center.y + sin(a).toFloat() * r.toFloat()
                     if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)

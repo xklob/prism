@@ -4,25 +4,23 @@ import android.content.Context
 import androidx.compose.ui.graphics.Color
 import kotlin.random.Random
 
-enum class Scene(val title: String, val subtitle: String, val reactive: Boolean, val accent: Color) {
-    AURORA("Aurora", "Interwoven currents and contour fields", false, Color(0xFFB7A0FF)),
-    KALEIDO("Kaleido", "Recursive geometry inside every reflection", false, Color(0xFFFF91D0)),
-    WORMHOLE("Wormhole", "An infinite tunnel of engraved geometry", false, Color(0xFF7FDCEB)),
-    PULSE("Pulse", "Interlocking mandalas shaped by bass", true, Color(0xFFCAAEFF)),
-    STRINGS("Strings", "Harmonic lattices woven from sound", true, Color(0xFF82E8CF)),
-    NOVA("Nova", "Nested orbital flowers and spectral filigree", true, Color(0xFFFFAA89)),
-    JULIA("Julia", "Explore the edge of an evolving fractal", false, Color(0xFFFFD38E));
+// Stable IDs preserve existing installations when scenes are removed or reordered.
+enum class Scene(val id: Int, val title: String, val subtitle: String, val accent: Color) {
+    AURORA(0, "Aurora", "Interwoven currents and contour fields", Color(0xFFB7A0FF)),
+    KALEIDO(1, "Kaleido", "Recursive geometry inside every reflection", Color(0xFFFF91D0)),
+    WORMHOLE(2, "Wormhole", "An infinite tunnel of engraved geometry", Color(0xFF7FDCEB)),
+    JULIA(6, "Julia", "Explore the edge of an evolving fractal", Color(0xFFFFD38E));
 
     val detailLabel: String get() = when (this) {
         AURORA -> "Contour density"; KALEIDO -> "Recursion depth"; WORMHOLE -> "Tunnel detail"
-        PULSE -> "Mandala layers"; STRINGS -> "Strand count"; NOVA -> "Orbital layers"; JULIA -> "Fractal iterations"
+        JULIA -> "Fractal iterations"
     }
     val symmetryLabel: String get() = when (this) {
         AURORA -> "Flow harmonics"; KALEIDO -> "Mirror segments"; WORMHOLE -> "Tunnel facets"
-        PULSE, NOVA -> "Petal count"; STRINGS -> "Weave harmonics"; JULIA -> "Symmetry"
+        JULIA -> "Symmetry"
     }
     val distortionLabel: String get() = when (this) {
-        WORMHOLE -> "Tunnel twist"; JULIA -> "Fractal shape"; STRINGS -> "Weave curvature"; else -> "Distortion"
+        WORMHOLE -> "Tunnel twist"; JULIA -> "Fractal shape"; else -> "Distortion"
     }
 }
 
@@ -38,6 +36,8 @@ data class VisualSettings(
     val scene: Scene = Scene.AURORA,
     val palette: Palette = Palette.SPECTRUM,
     val source: AudioSource = AudioSource.MICROPHONE,
+    val audioEnabled: Boolean = false,
+    val audioAmount: Float = 1f,
     val speed: Float = 0.7f,
     val intensity: Float = 0.95f,
     val sensitivity: Float = 1.4f,
@@ -57,7 +57,7 @@ data class VisualSettings(
     val bassGain: Float = 1f,
     val midGain: Float = 1f,
     val trebleGain: Float = 1f,
-    val smoothing: Float = 0.25f
+    val smoothing: Float = 0.15f
 ) {
     fun randomLook(random: Random = Random.Default) = copy(
         palette = Palette.entries[random.nextInt(Palette.entries.size)],
@@ -66,15 +66,12 @@ data class VisualSettings(
         zoom = random.nextFloat() * 0.9f + 0.75f, hue = random.nextFloat(),
         rotation = random.nextFloat() * 0.7f - 0.35f, morph = random.nextFloat() * 0.7f + 0.15f
     )
-    fun resetLook() = defaults(scene).copy(source = source, sensitivity = sensitivity, batterySaver = batterySaver, paused = paused)
+    fun resetLook() = defaults(scene).copy(source = source, audioEnabled = audioEnabled, sensitivity = sensitivity, batterySaver = batterySaver, paused = paused)
 
     companion object {
         fun defaults(scene: Scene) = when (scene) {
             Scene.KALEIDO -> VisualSettings(scene = scene, complexity = 0.8f, symmetry = 12, distortion = 0.55f)
             Scene.WORMHOLE -> VisualSettings(scene = scene, symmetry = 12, distortion = 0.65f, rotation = 0.08f)
-            Scene.PULSE -> VisualSettings(scene = scene, symmetry = 10, complexity = 0.8f)
-            Scene.STRINGS -> VisualSettings(scene = scene, symmetry = 6, distortion = 0.8f, rotation = 0f)
-            Scene.NOVA -> VisualSettings(scene = scene, symmetry = 9, complexity = 0.8f, distortion = 0.75f)
             Scene.JULIA -> VisualSettings(scene = scene, complexity = 0.8f, distortion = 0.65f, rotation = 0.025f, morph = 0.15f)
             else -> VisualSettings(scene = scene)
         }
@@ -85,7 +82,8 @@ data class VisualSettings(
 class SettingsStore(context: Context) {
     private val prefs = context.getSharedPreferences("prism", Context.MODE_PRIVATE)
     fun load(): VisualSettings {
-        val scene = Scene.entries.getOrElse(prefs.getInt("scene", 0)) { Scene.AURORA }
+        val scene = Scene.entries.find { it.name == prefs.getString("sceneName", null) }
+            ?: Scene.entries.find { it.id == prefs.getInt("scene", 0) } ?: Scene.AURORA
         val source = AudioSource.entries.getOrElse(prefs.getInt("source", 0)) { AudioSource.MICROPHONE }
         return loadScene(scene, source)
     }
@@ -104,6 +102,8 @@ class SettingsStore(context: Context) {
         }
         return d.copy(
             source = source,
+            audioEnabled = prefs.getBoolean("scene.${scene.name}.audioEnabled", false),
+            audioAmount = f("audioAmount", d.audioAmount, 0f, 2.5f),
             palette = Palette.entries.getOrElse(prefs.getInt(prefix + "palette", prefs.getInt("palette", d.palette.ordinal))) { d.palette },
             speed = f("speed", d.speed, 0.05f, 2f), intensity = f("intensity", d.intensity, 0.25f, 1.6f),
             sensitivity = prefs.getFloat("sensitivity", 1.4f).coerceIn(0.4f, 4f),
@@ -128,9 +128,11 @@ class SettingsStore(context: Context) {
             "distortion" to s.distortion, "zoom" to s.zoom, "lineWidth" to s.lineWidth,
             "hue" to s.hue, "saturation" to s.saturation, "contrast" to s.contrast,
             "colorSpeed" to s.colorSpeed, "rotation" to s.rotation, "morph" to s.morph,
-            "bassGain" to s.bassGain, "midGain" to s.midGain, "trebleGain" to s.trebleGain, "smoothing" to s.smoothing
+            "bassGain" to s.bassGain, "midGain" to s.midGain, "trebleGain" to s.trebleGain, "smoothing" to s.smoothing,
+            "audioAmount" to s.audioAmount
         )) editor.putFloat(prefix + key, value)
-        if (shared) editor.putInt("scene", s.scene.ordinal).putInt("source", s.source.ordinal)
+        if (shared) editor.putInt("scene", s.scene.id).putString("sceneName", s.scene.name)
+            .putBoolean(prefix + "audioEnabled", s.audioEnabled).putInt("source", s.source.ordinal)
             .putFloat("sensitivity", s.sensitivity).putBoolean("batterySaver", s.batterySaver)
         editor.apply()
     }

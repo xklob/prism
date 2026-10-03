@@ -30,12 +30,12 @@ class MainActivity : ComponentActivity() {
 
     private val audioPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         connecting = false
-        if (granted && settings.scene.reactive && !settings.paused) connectAudio()
+        if (granted && settings.audioEnabled && !settings.paused) connectAudio()
         else if (!granted) AudioEngine.report("Audio permission was declined. You can allow it in Android Settings, or enjoy an ambient scene.")
     }
     private val playbackPermission = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         connecting = false
-        if (result.resultCode == Activity.RESULT_OK && result.data != null && settings.scene.reactive && settings.source == AudioSource.SYSTEM && !settings.paused) {
+        if (result.resultCode == Activity.RESULT_OK && result.data != null && settings.audioEnabled && settings.source == AudioSource.SYSTEM && !settings.paused) {
             try {
                 ContextCompat.startForegroundService(this, Intent(this, PlaybackCaptureService::class.java).putExtra("consent", result.data))
             } catch (_: Exception) {
@@ -45,7 +45,7 @@ class MainActivity : ComponentActivity() {
     }
     private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
         connecting = false
-        if (settings.scene.reactive && settings.source == AudioSource.SYSTEM && !settings.paused) requestSystemProjection()
+        if (settings.audioEnabled && settings.source == AudioSource.SYSTEM && !settings.paused) requestSystemProjection()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -57,7 +57,7 @@ class MainActivity : ComponentActivity() {
         store = SettingsStore(this)
         settings = store.load()
         if (AudioEngine.status.value.running && AudioEngine.status.value.source == AudioSource.SYSTEM) {
-            settings = settings.copy(source = AudioSource.SYSTEM, scene = if (settings.scene.reactive) settings.scene else Scene.PULSE)
+            settings = settings.copy(source = AudioSource.SYSTEM, audioEnabled = true)
         }
         updateWakeLock()
         setContent {
@@ -76,11 +76,12 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun changeSettings(next: VisualSettings) {
-        if (!next.scene.reactive || next.source != settings.source || next.paused) disconnectAudio()
         val resolved = if (next.scene != settings.scene) {
             store.save(settings)
             store.loadScene(next.scene, next.source).copy(paused = next.paused)
         } else next
+        // Resolve the destination's saved audio toggle before deciding whether to retain capture.
+        if (!resolved.audioEnabled || resolved.source != settings.source || resolved.paused) disconnectAudio()
         settings = resolved
         AudioEngine.sensitivity = resolved.sensitivity
         store.save(resolved)
@@ -89,7 +90,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun connectAudio() {
-        if (connecting || !settings.scene.reactive) return
+        if (connecting || !settings.audioEnabled) return
         if (settings.paused) changeSettings(settings.copy(paused = false))
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             connecting = true
@@ -142,7 +143,7 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         surface?.onResume()
-        if (resumeMicrophone && settings.scene.reactive && settings.source == AudioSource.MICROPHONE && !settings.paused) {
+        if (resumeMicrophone && settings.audioEnabled && settings.source == AudioSource.MICROPHONE && !settings.paused) {
             resumeMicrophone = false
             AudioEngine.startMicrophone(this)
         }

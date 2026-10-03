@@ -23,13 +23,12 @@ uniform float uTransition;
 uniform int uPalette;
 uniform vec4 uAudio;
 uniform float uBeat;
-uniform float uBands[32];
 const float PI = 3.14159265359;
 const float TAU = 6.28318530718;
 
 mat2 rotate(float a) { return mat2(cos(a), -sin(a), sin(a), cos(a)); }
 vec3 palette(float t) {
-    t += uHue + uColorPhase;
+    t += uHue + uColorPhase + uAudio.z * 0.14;
     if (uPalette == 0) return 0.5 + 0.5 * cos(TAU * (t + vec3(0.0, 0.33, 0.67)));
     vec3 a = vec3(0.48, 0.12, 0.68), b = vec3(1.0, 0.22, 0.39), c = vec3(1.0, 0.69, 0.22);
     if (uPalette == 2) { a = vec3(0.16, 0.20, 0.79); b = vec3(0.16, 0.72, 0.91); c = vec3(0.57, 1.0, 0.78); }
@@ -38,11 +37,6 @@ vec3 palette(float t) {
     if (phase < 1.0) return mix(a, b, smoothstep(0.0, 1.0, phase));
     if (phase < 2.0) return mix(b, c, smoothstep(0.0, 1.0, phase - 1.0));
     return mix(c, a, smoothstep(0.0, 1.0, phase - 2.0));
-}
-float band(float position) {
-    float index = clamp(position, 0.0, 1.0) * 31.0;
-    int low = int(floor(index));
-    return mix(uBands[low], uBands[min(low + 1, 31)], fract(index));
 }
 // Pixel-width contours with a one-pixel antialiasing fringe. No glow or blur tails.
 float line(float field, float weight) {
@@ -63,12 +57,12 @@ vec3 aurora(vec2 p, float t) {
     float m = uMorphTime;
     for (int i = 0; i < 5; i++) {
         float f = float(i);
-        q += uDistortion * 0.31 * vec2(sin(q.y * 1.7 + m * 0.3 + f), cos(q.x * 1.65 - m * 0.23 + f * 1.7));
+        q += (uDistortion * 0.31 + uAudio.y * 0.19) * vec2(sin(q.y * 1.7 + m * 0.3 + f + uAudio.x * 0.5), cos(q.x * 1.65 - m * 0.23 + f * 1.7));
         q = rotate(0.31) * q;
     }
-    float frequency = 9.0 + uComplexity * 26.0;
+    float frequency = (9.0 + uComplexity * 26.0) * (1.0 + uAudio.z * 0.12);
     float phase = q.x * frequency + sin(q.y * (1.5 + uSymmetry * 0.2)) * 2.2 - t * 0.4;
-    float crossing = q.y * frequency * 0.82 + cos(q.x * 2.1 - m * 0.2) * 2.2;
+    float crossing = q.y * frequency * 0.82 + cos(q.x * 2.1 - m * 0.2 + uAudio.y) * 2.2;
     float ribbons = periodic(phase, 1.0);
     float threads = periodic(crossing, 0.85);
     float etch = periodic(phase * 2.0 + crossing * 0.3, 0.65);
@@ -89,10 +83,10 @@ vec3 kaleido(vec2 p, float t) {
     for (int i = 0; i < 9; i++) {
         if (i >= layers) break;
         float f = float(i);
-        q = abs(q) - vec2(0.46 + 0.05 * sin(m * 0.4 + f), 0.19 + uDistortion * 0.085);
-        q = rotate(0.52 + uDistortion * 0.34 + sin(m * 0.15) * 0.08) * q * 1.46;
+        q = abs(q) - vec2(0.46 + 0.05 * sin(m * 0.4 + f) + uAudio.x * 0.08, 0.19 + uDistortion * 0.085 + uAudio.z * 0.026);
+        q = rotate(0.52 + uDistortion * 0.34 + sin(m * 0.15) * 0.08 + uAudio.y * 0.24) * q * 1.46;
         float diamond = abs(q.x) + abs(q.y) - 0.29;
-        float circle = length(q - vec2(0.12, 0.0)) - 0.20;
+        float circle = length(q - vec2(0.12, 0.0)) - 0.20 - uAudio.z * 0.045;
         float frame = max(abs(q.x), abs(q.y)) - 0.33;
         float detail = line(diamond, 1.0) + line(circle, 0.75) * 0.65 + line(frame, 0.65) * 0.38;
         c += palette(f * 0.115 + radius * 0.15) * detail * (0.67 - f * 0.035);
@@ -104,80 +98,17 @@ vec3 kaleido(vec2 p, float t) {
 vec3 wormhole(vec2 p, float t) {
     float r = max(length(p), 0.018);
     float a = atan(p.y, p.x);
-    float depth = -log(r) * (3.0 + uComplexity * 4.0) + t * 0.75;
-    float around = a * uSymmetry / TAU + uDistortion * (depth * 0.20 + sin(depth * 0.4 + uMorphTime * 0.2));
+    float depth = -log(r) * (3.0 + uComplexity * 4.0) + t * 0.75 + uAudio.x * 0.85 + uBeat * 0.32;
+    float around = a * uSymmetry / TAU + (uDistortion + uAudio.y * 0.65) * (depth * 0.20 + sin(depth * 0.4 + uMorphTime * 0.2));
     vec2 tile = vec2(around, depth);
     vec2 cell = fract(tile) - 0.5;
     float circuit = periodic(PI * tile.x, 1.0) + periodic(PI * tile.y, 0.85);
     float diagonal = periodic(PI * (tile.x + tile.y), 0.65);
     float inlay = line(max(abs(cell.x), abs(cell.y)) - 0.31, 0.8);
-    float gem = line(abs(cell.x) + abs(cell.y) - 0.20, 0.75);
+    float gem = line(abs(cell.x) + abs(cell.y) - 0.20 - uAudio.z * 0.10, 0.75);
     vec3 c = palette(depth * 0.055 + a / TAU * 0.2) * circuit * 0.8;
     c += palette(depth * 0.055 + 0.35) * (diagonal * 0.3 + inlay * 0.55 + gem * 0.65);
     return c * smoothstep(0.022, 0.10, r);
-}
-
-vec3 pulse(vec2 p, float t) {
-    float r = length(p), a = atan(p.y, p.x);
-    float bass = uAudio.x, mid = uAudio.y;
-    vec3 c = vec3(0.0);
-    int layers = 9 + int(uComplexity * 16.0);
-    for (int i = 0; i < 25; i++) {
-        if (i >= layers) break;
-        float f = float(i);
-        float angle = a + sin(uMorphTime * 0.22 + f * 0.14) * 0.12;
-        float petals = sin(angle * uSymmetry + f * 0.34);
-        float lace = cos(angle * uSymmetry * 2.0 - f * 0.22);
-        float radius = 0.12 + f * 0.052 + bass * 0.055 + petals * (0.02 + uDistortion * 0.058 + mid * 0.04);
-        radius += lace * (0.009 + uDistortion * 0.013);
-        c += palette(f * 0.05 + bass * 0.08) * line(r - radius, 1.0) * (0.65 + bass * 0.35);
-    }
-    float spoke = sin(a * uSymmetry * 2.0 + cos(r * 10.0 - uMorphTime * 0.2) * uDistortion);
-    c += palette(r * 0.3 + 0.4) * line(spoke, 0.75) * step(0.16, r) * step(r, 1.55) * (0.25 + uAudio.z * 0.55);
-    float seed = sin(a * uSymmetry) * 0.035 + 0.065 + uBeat * 0.02;
-    c += palette(0.1) * line(r - seed, 1.15);
-    return c;
-}
-
-vec3 strings(vec2 p, float t) {
-    vec3 c = vec3(0.0);
-    int strands = 14 + int(uComplexity * 30.0);
-    float count = float(strands);
-    for (int i = 0; i < 44; i++) {
-        if (i >= strands) break;
-        float f = float(i) / max(count - 1.0, 1.0);
-        float frequency = band(f);
-        float y = (f - 0.5) * 3.6;
-        float wave = sin(p.x * (1.2 + uSymmetry * 0.22) + uMorphTime * 0.3 + f * TAU) * (0.12 + uDistortion * 0.26 + frequency * 0.24);
-        wave += sin(p.x * 4.3 - t * 0.23 + f * 12.0) * uDistortion * 0.065;
-        float front = line(p.y - y - wave, 0.95);
-        float back = line(p.y - y + wave + sin(p.x * 2.0 + f * 4.0) * 0.13, 0.75);
-        c += palette(f * 0.65 + p.x * 0.08) * front * (0.65 + frequency * 0.5);
-        c += palette(f * 0.65 + 0.33 - p.x * 0.06) * back * (0.35 + uAudio.y * 0.35);
-    }
-    return c;
-}
-
-vec3 nova(vec2 p, float t) {
-    float r = length(p), a = atan(p.y, p.x);
-    vec3 c = vec3(0.0);
-    int layers = 7 + int(uComplexity * 14.0);
-    float spectrum = band(abs(sin(a * 1.5 + uMorphTime * 0.025)));
-    for (int i = 0; i < 21; i++) {
-        if (i >= layers) break;
-        float f = float(i);
-        float angle = a + f * 0.032 + sin(uMorphTime * 0.20 + f * 0.12) * 0.10;
-        float petals = cos(angle * uSymmetry);
-        float filigree = sin(angle * (uSymmetry * 3.0) + f * 0.31);
-        float shape = (0.18 + f * 0.055) * (1.0 + petals * (0.12 + uDistortion * 0.22));
-        shape += filigree * 0.012 * (0.5 + uComplexity) + spectrum * 0.085 + uAudio.x * 0.05;
-        c += palette(f * 0.055 + a / TAU * 0.15) * line(r - shape, 1.0) * (0.62 + uAudio.w * 0.35);
-    }
-    vec2 q = fold(p, uSymmetry);
-    vec2 satellite = q - vec2(0.95 + uAudio.x * 0.12, 0.0);
-    float orbit = length(satellite);
-    c += palette(orbit * 1.7 + 0.4) * periodic(orbit * (32.0 + uComplexity * 32.0) - t * 0.1, 0.8) * step(orbit, 0.20 + uAudio.z * 0.09) * 0.65;
-    return c;
 }
 
 vec3 julia(vec2 p, float t) {
@@ -185,12 +116,14 @@ vec3 julia(vec2 p, float t) {
     float shape = uDistortion / 1.5;
     vec2 constant = mix(vec2(-0.745, 0.186), vec2(-0.40, 0.59), shape);
     constant += vec2(sin(uMorphTime * 0.12), cos(uMorphTime * 0.1)) * 0.009;
+    // Small movements of c produce large, intricate changes at the fractal boundary.
+    constant += vec2(uAudio.y * 0.052, uAudio.x * 0.025 - uAudio.y * 0.028);
     float escaped = 0.0, count = 0.0, trap = 10.0;
     int iterations = 40 + int(uComplexity * 104.0);
     for (int i = 0; i < 144; i++) {
         if (i >= iterations) break;
         z = vec2(z.x * z.x - z.y * z.y, 2.0 * z.x * z.y) + constant;
-        trap = min(trap, abs(length(z) - 0.7));
+        trap = min(trap, abs(length(z) - 0.7 - uAudio.z * 0.13));
         float magnitude = dot(z, z);
         if (magnitude > 128.0) {
             count = float(i) + 1.0 - log2(max(0.001, log2(magnitude) * 0.5));
@@ -198,7 +131,7 @@ vec3 julia(vec2 p, float t) {
             break;
         }
     }
-    float contours = periodic(count * 1.8, 1.0);
+    float contours = periodic(count * (1.8 + uAudio.z * 0.25), 1.0);
     vec3 outside = palette(count * 0.026) * (0.18 + contours * 0.82);
     vec3 inside = palette(trap * 6.0 + 0.3) * periodic(trap * 140.0, 1.0) * 0.65;
     return mix(inside, outside, escaped);
@@ -208,15 +141,14 @@ vec3 scene(int mode, vec2 p, float t) {
     if (mode == 0) return aurora(p, t);
     if (mode == 1) return kaleido(p, t);
     if (mode == 2) return wormhole(p, t);
-    if (mode == 3) return pulse(p, t);
-    if (mode == 4) return strings(p, t);
-    if (mode == 5) return nova(p, t);
     return julia(p, t);
 }
 void main() {
     vec2 p = (vUv * 2.0 - 1.0) * uResolution / min(uResolution.x, uResolution.y);
     p -= uTouch * 0.3;
-    p = rotate(uRotation) * p * (0.95 / uZoom);
+    // The same scene remains visible with audio off; every audio term then equals zero.
+    float expansion = 1.0 + uAudio.x * 0.30 + uBeat * 0.10;
+    p = rotate(uRotation + uAudio.y * 0.10) * p * (0.95 / (uZoom * expansion));
     vec3 color = scene(uMode, p, uTime);
     if (uTransition < 1.0) color = mix(scene(uPreviousMode, p, uTime), color, smoothstep(0.0, 1.0, uTransition));
     color = clamp(color * uIntensity * 1.22, 0.0, 1.0);

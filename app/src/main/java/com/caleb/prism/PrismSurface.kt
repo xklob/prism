@@ -11,7 +11,6 @@ import javax.microedition.khronos.egl.EGLConfig
 import javax.microedition.khronos.opengles.GL10
 import kotlin.math.max
 import kotlin.math.min
-import kotlin.math.exp
 
 class PrismSurface @JvmOverloads constructor(context: Context, onError: (String) -> Unit = {}) : GLSurfaceView(context) {
     val engine = PrismRenderer(context, onError)
@@ -55,8 +54,7 @@ class PrismRenderer(private val context: Context, private val onError: (String) 
     private var rotation = 0f
     private var colorPhase = 0f
     private var morphTime = 0f
-    private val smoothedAudio = FloatArray(5)
-    private val smoothedBands = FloatArray(32)
+    private val audioResponse = AudioResponse()
     private var frameCounter = 0
     private var statsStart = 0L
     @Volatile var measuredFps = 0f; private set
@@ -65,7 +63,6 @@ class PrismRenderer(private val context: Context, private val onError: (String) 
     private var transition = 1f
     private var touchSmoothX = 0f
     private var touchSmoothY = 0f
-    private val silence = AudioLevels()
 
     override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) {
         try {
@@ -87,7 +84,7 @@ class PrismRenderer(private val context: Context, private val onError: (String) 
             glGetProgramiv(program, GL_LINK_STATUS, linked, 0)
             check(linked[0] != 0) { glGetProgramInfoLog(program) }
             uniforms.clear()
-            for (name in listOf("uResolution", "uTouch", "uTime", "uRotation", "uColorPhase", "uMorphTime", "uIntensity", "uComplexity", "uSymmetry", "uDistortion", "uZoom", "uLineWidth", "uHue", "uSaturation", "uContrast", "uMode", "uPreviousMode", "uTransition", "uPalette", "uAudio", "uBeat", "uBands[0]")) {
+            for (name in listOf("uResolution", "uTouch", "uTime", "uRotation", "uColorPhase", "uMorphTime", "uIntensity", "uComplexity", "uSymmetry", "uDistortion", "uZoom", "uLineWidth", "uHue", "uSaturation", "uContrast", "uMode", "uPreviousMode", "uTransition", "uPalette", "uAudio", "uBeat")) {
                 uniforms[name] = glGetUniformLocation(program, name)
             }
             val vertices = ByteBuffer.allocateDirect(32).order(ByteOrder.nativeOrder()).asFloatBuffer()
@@ -127,23 +124,15 @@ class PrismRenderer(private val context: Context, private val onError: (String) 
             touchSmoothX += (touchX - touchSmoothX) * 0.07f
             touchSmoothY += (touchY - touchSmoothY) * 0.07f
         }
-        if (s.scene.ordinal != currentMode) {
-            previousMode = if (currentMode < 0) s.scene.ordinal else currentMode
-            currentMode = s.scene.ordinal
+        if (s.scene.id != currentMode) {
+            previousMode = if (currentMode < 0) s.scene.id else currentMode
+            currentMode = s.scene.id
             transition = 0f
         }
-        if (!s.paused) transition = min(1f, transition + dt * 1.7f)
+        transition = min(1f, transition + dt * 1.7f)
         if (program != 0) {
-            val audio = if (s.scene.reactive) AudioEngine.levels else silence
-            if (!s.paused) {
-                val blend = 1f - exp(-dt / (0.012f + s.smoothing * 0.35f))
-                val target = floatArrayOf(audio.bass * s.bassGain, audio.mid * s.midGain, audio.high * s.trebleGain, audio.energy, audio.beat)
-                for (i in smoothedAudio.indices) smoothedAudio[i] += (target[i].coerceIn(0f, 1f) - smoothedAudio[i]) * blend
-                for (i in smoothedBands.indices) {
-                    val gain = if (i < 10) s.bassGain else if (i < 23) s.midGain else s.trebleGain
-                    smoothedBands[i] += ((audio.bands[i] * gain).coerceIn(0f, 1f) - smoothedBands[i]) * blend
-                }
-            }
+            val audio = audioResponse.update(AudioEngine.levels, s.audioEnabled, s.paused, dt,
+                s.audioAmount, s.bassGain, s.midGain, s.trebleGain, s.smoothing)
             glUseProgram(program)
             glUniform1f(uniforms.getValue("uTime"), time)
             glUniform1f(uniforms.getValue("uRotation"), rotation)
@@ -163,9 +152,8 @@ class PrismRenderer(private val context: Context, private val onError: (String) 
             glUniform1i(uniforms.getValue("uPreviousMode"), previousMode)
             glUniform1f(uniforms.getValue("uTransition"), transition)
             glUniform1i(uniforms.getValue("uPalette"), s.palette.ordinal)
-            glUniform4f(uniforms.getValue("uAudio"), smoothedAudio[0], smoothedAudio[1], smoothedAudio[2], smoothedAudio[3])
-            glUniform1f(uniforms.getValue("uBeat"), smoothedAudio[4])
-            glUniform1fv(uniforms.getValue("uBands[0]"), 32, smoothedBands, 0)
+            glUniform4f(uniforms.getValue("uAudio"), audio.bass, audio.mid, audio.treble, audio.energy)
+            glUniform1f(uniforms.getValue("uBeat"), audio.beat)
             glDrawArrays(GL_TRIANGLE_STRIP, 0, 4)
         } else { glClearColor(0.03f, 0.03f, 0.08f, 1f); glClear(GL_COLOR_BUFFER_BIT) }
         if (statsStart == 0L) statsStart = started

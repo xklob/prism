@@ -15,7 +15,9 @@ class SpectrumAnalyzer(private val sampleRate: Int = 48000, val size: Int = 2048
     private val imaginary = DoubleArray(size)
     private val window = DoubleArray(size) { 0.5 - 0.5 * cos(2 * PI * it / (size - 1)) }
     private var previous = AudioLevels()
-    private var average = 0.01
+    private var peakRms = 0.01
+    private var previousBass = 0.0
+    private var previousRms = 0.0
     private var sinceBeat = 1.0
 
     fun analyze(samples: ShortArray, sensitivity: Float = 1.4f): AudioLevels {
@@ -36,21 +38,34 @@ class SpectrumAnalyzer(private val sampleRate: Int = 48000, val size: Int = 2048
             for (i in first..last) sum += real[i] * real[i] + imaginary[i] * imaginary[i]
             return sqrt(sum) / size * 3.2
         }
-        fun normalized(value: Double) = (1.0 - exp(-value * gain * 3.2)).toFloat().coerceIn(0f, 1f)
-        fun smooth(value: Float, old: Float) = old + (value - old) * if (value > old) 0.72f else 0.16f
         val rms = sqrt(squareSum / size)
-        sinceBeat += size.toDouble() / sampleRate
-        val beat = if (rms > average * 1.45 + 0.009 && sinceBeat > 0.18) {
+        val dt = size.toDouble() / sampleRate
+        // Normalize quiet playback quickly, without turning silence into a signal.
+        // Slow peak release preserves relative beat dynamics instead of chasing every sample.
+        peakRms = max(rms, peakRms * exp(-dt / 2.5))
+        val autoGain = (0.18 / max(0.01, peakRms)).coerceIn(0.65, 18.0)
+        val gate = ((rms - 0.0012) / 0.0028).coerceIn(0.0, 1.0)
+        fun normalized(value: Double) = (1.0 - exp(-value * gain * autoGain * 3.2)).toFloat() * gate.toFloat()
+        // One short attack, then a fast enough release for successive kicks to remain distinct.
+        fun smooth(value: Float, old: Float): Float {
+            val tau = if (value > old) 0.015 else 0.10
+            return old + (value - old) * (1.0 - exp(-dt / tau)).toFloat()
+        }
+        val bassPower = power(35.0, 250.0)
+        sinceBeat += dt
+        val onset = bassPower > previousBass * 1.4 + 0.003 / autoGain || rms > previousRms * 1.55 + 0.003 / autoGain
+        val beat = if (gate > 0.1 && onset && sinceBeat > 0.16) {
             sinceBeat = 0.0; 1f
-        } else previous.beat * 0.82f
-        average += (rms - average) * 0.06
+        } else previous.beat * exp(-dt / 0.12).toFloat()
+        previousBass = bassPower
+        previousRms = rms
         val bands = FloatArray(32) { i ->
             val low = 35.0 * (14000.0 / 35.0).pow(i / 32.0)
             val high = 35.0 * (14000.0 / 35.0).pow((i + 1) / 32.0)
             smooth(normalized(power(low, high)), previous.bands[i])
         }
         return AudioLevels(
-            smooth(normalized(power(35.0, 250.0)), previous.bass),
+            smooth(normalized(bassPower), previous.bass),
             smooth(normalized(power(250.0, 2500.0)), previous.mid),
             smooth(normalized(power(2500.0, 16000.0)), previous.high),
             smooth(normalized(rms), previous.energy), beat, bands

@@ -60,4 +60,30 @@ class SpectrumAnalyzerTest {
 
     @Test(expected = IllegalArgumentException::class)
     fun rejectsIncompletePcmBlock() { SpectrumAnalyzer().analyze(ShortArray(32)) }
+
+    @Test fun quietMusicHasUsefulDynamicRangeButNoiseDoesNot() {
+        val quiet = SpectrumAnalyzer()
+        val loud = SpectrumAnalyzer()
+        val low = quiet.analyze(tone(93.75, 0.015))
+        val high = loud.analyze(tone(93.75, 0.5))
+        assertTrue("Quiet playback should react on its first block: ${low.bass}", low.bass > 0.4f)
+        assertTrue("Loud music should retain headroom: ${high.bass}", high.bass in 0.5f..0.95f)
+        val noise = SpectrumAnalyzer()
+        repeat(150) { assertEquals(0f, noise.analyze(tone(1000.0, 0.001)).energy, 0f) }
+    }
+
+    @Test fun successiveKicksStayDistinctAndSteadyTonesDoNotRetrigger() {
+        val analyzer = SpectrumAnalyzer()
+        repeat(5) {
+            repeat(8) { analyzer.analyze(ShortArray(2048)) }
+            val kick = analyzer.analyze(tone(93.75, 0.12))
+            assertEquals("Each kick gets its own onset", 1f, kick.beat, 0f)
+            assertTrue(kick.bass > 0.5f)
+            var tail = kick
+            repeat(5) { tail = analyzer.analyze(ShortArray(2048)) }
+            assertTrue("Release should separate beats", tail.bass < kick.bass * 0.15f)
+        }
+        repeat(100) { analyzer.analyze(tone(93.75, 0.12)) }
+        assertTrue(analyzer.analyze(tone(93.75, 0.12)).beat < 0.001f)
+    }
 }
