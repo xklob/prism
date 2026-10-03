@@ -1,0 +1,17 @@
+{
+  "source": "https://github.com/mjhydri/BeatNet",
+  "upstream_commit": "81cedd4beeb7235262db80969a0c9ce9a48a0ed4",
+  "weights_sha256": "0c52a074ea38e8cb4a760ecfa3747c9cf91a1e3cd19f238eed80b0de763989ca",
+  "license": "CC-BY-4.0",
+  "model_sha256": "aed51d0292a3c0e2479137b3a2b1ad6a2a99d4402c188e45cb116ff0fc5b8abb",
+  "sample_rate": 22050,
+  "hop": 441,
+  "window": 1411,
+  "rolling_window": 2293,
+  "feature_delay_samples": 970,
+  "filter_shape": [
+    705,
+    136
+  ],
+  "onnx_max_probability_error": 4.172325134277344e-07
+}

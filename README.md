@@ -8,7 +8,7 @@ A native Android psychedelic visualizer. Kotlin, Jetpack Compose, and four origi
 | --- | --- |
 | Aurora: interwoven contour fields | Expanding currents, bending contours, shifting detail |
 | Kaleido: recursive mirrored geometry | Pulsing scale, changing folds and nested geometry |
-| Wormhole: an engraved geometric tunnel | Bass-driven depth, midrange twist, treble inlays |
+| Wormhole: an engraved geometric tunnel | Beat-driven depth, bar accents, rhythmic twist |
 | Julia: an evolving Julia fractal | Fractal deformation, breathing scale, shifting contours |
 
 Every pattern works independently of audio. **React to audio** is optional and remembered separately for each pattern. The old Pulse, Strings, and Nova scenes have been removed. No simulated audio signal is used.
@@ -32,15 +32,23 @@ System capture continues when you switch to your music app. Allow notifications 
 | Geometry | Scene-specific detail/recursion/iteration count, symmetry, distortion, zoom, line weight |
 | Color | Four palettes, hue shift, saturation, brightness, contrast |
 | Motion | Travel speed, signed rotation speed, shape evolution, color cycling, battery saver |
-| Audio (all patterns) | Per-pattern enable switch, source and connection, live band meters, reaction strength, sensitivity, bass/mid/treble influence, response smoothing |
+| Audio (all patterns) | Per-pattern enable, input source, BPM and beat indicators, beat/bar lock status, timing corrections, reaction strength, beat pulse, bar accent, musical motion, pulse length, sync offset, input gain, optional audio texture |
 
-Bass expands the geometry and adds a short beat impact; mids deform and twist it; treble changes fine detail and color. **Reaction strength** controls the overall amount, including values above 100%. Set it to zero for no modulation, or disable **React to audio** to also stop capture. Quiet playback is boosted automatically, a noise gate prevents silence from triggering motion, and fast attack/release preserves distinct beats. **Response smoothing** mostly lengthens the release; it keeps the initial response quick.
+Audio response follows musical timing. Each detected beat produces a crisp pulse; the first beat of a detected bar adds a separate accent; **Musical motion** moves the geometry smoothly across the beat or bar. The detector uses two complementary local beat/downbeat models, then tracks tempo, phase, and competing 3-beat and 4-beat bar hypotheses. Each model has its own tracker; switching requires sustained stronger evidence, and manual alignment stays in control. Beat and bar lock are separate: repeated beats alone do not establish a measure boundary. Allow a few seconds for beat lock and several measures for bar evidence. Silence stops modulation.
+
+Automatic tracking requires spectral changes in the input. A steady tone does not become a repeating visual beat; short gaps between musical events still allow the beat clock to coast.
+
+**Reaction strength** scales all modulation, including values above 100%. Set it to zero for the original ambient image, or disable **React to audio** to also stop capture. **Beat pulse**, **Bar accent**, and **Musical motion** are independent; **Pulse length** is measured in beats so it follows tempo. The optional **Extra audio texture** adds a little treble-dependent detail and defaults to zero. Raw volume does not drive the default movement.
+
+Automatic timing can be ambiguous, especially with syncopation, sparse drums, tempo changes, or unusual meters. The automatic tempo search covers 60–200 BPM and 3/4 or 4/4 meter. Tap **Tap tempo** at least three times to set tempo manually, select **3** or **4** if needed, and tap **Bar starts here** on the first beat. **½ BPM** and **2× BPM** correct half/double-time interpretations. **Auto timing** returns tempo and bar alignment to detection; the selected meter remains in effect. Manual timing applies only to the active capture session. **Sync offset** advances the visual for positive values and delays it for negative values, up to 250 ms, to compensate for playback routing such as Bluetooth. Input gain boosts quiet recordings automatically and can be adjusted further.
 
 Each scene remembers its own settings. **Shuffle** makes a new visual variation without changing capture or playback state. **Save** stores one favorite look per scene, including its reaction settings; **Recall** restores it; **Reset** returns that scene to its defaults. None of these actions changes the audio enable switch or starts capture. Existing visual preferences migrate automatically. Julia retains its original stable ID; an installation last using a removed scene starts on Aurora with audio disabled. Saved looks do not contain capture permission tokens.
 
 Contours use pixel-width antialiasing without glow or blur. Normal rendering uses the screen's native resolution. AudioLabs (<https://audiolabs.dev>) was inspected as a reference for visual density and detailed controls; Prism's shaders and Android UI are original implementations.
 
-No account, network permission, analytics, ads, audio files, or cloud services. Audio is processed in memory using a 2,048-sample FFT at 48 kHz. Scene and tuning preferences are saved locally. Capture consent is never saved or reused across sessions.
+No account, network permission, analytics, ads, audio recording, or cloud services. Audio stays in memory. Analysis runs every 20 ms on the capture worker; rendering predicts beat phase at display refresh rate. Android capture timestamps and frontend-delay compensation keep analysis on the same clock as the visuals. Scene and tuning preferences are saved locally. Capture consent is never saved or reused across sessions.
+
+Beat/downbeat inference uses [BeatNet](https://github.com/mjhydri/BeatNet) models 1 and 3 by Mojtaba Heydari and contributors, licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), converted to ONNX with explicit recurrent state. Prism supplies its own Kotlin frontend and musical tracker. [ONNX Runtime](https://github.com/microsoft/onnxruntime) is MIT-licensed. Attribution, licenses, and model provenance ship in `app/src/main/assets/rhythm/`; reproducible conversion instructions are in [tools/beatnet](tools/beatnet/README.md).
 
 ## Build
 
@@ -58,12 +66,22 @@ The debug APK is in `app/build/outputs/apk/debug/` and uses package `com.caleb.p
 
 ## Verification
 
-`SpectrumAnalyzerTest` checks silence, quiet playback, noise gating, bass/mid/treble isolation, gain, bounds, repeated beats, decay, and incomplete input. `AudioResponseTest` checks response latency, strength headroom, independent band controls, and clearing modulation when audio is disabled. `PrismDeviceTest` exercises Android system capture against real PCM playback, source lifecycle, per-pattern toggles, migration, saved looks, immersive controls, and landscape layout. The shipped shader is rendered at fixed animation phases to verify that every pattern visibly reacts to captured audio and each quiet frequency band; audio off must produce exactly the original ambient image. Pixel comparisons also verify the transparent overlay and live geometry adjustments. Device screenshots and capture measurements are written to the app's external `files/review` directory.
+Unit tests check the exact audio frontend, resampling, tempo/phase/meter tracking, missing beats, ambiguous bar evidence, tempo changes, silence, manual corrections, and beat/bar envelopes. Learned activations from original musical fixtures cover 96, 128, and 174 BPM. One syncopated 3/4 fixture intentionally checks manual correction of an ambiguous first beat; automatic bar alignment is not assumed to be infallible.
+
+`PrismDeviceTest` checks Android ONNX against reference predictions, processes a full musical PCM fixture, measures analysis speed and phase error, and exercises actual Android system capture. It also checks capture lifecycle, per-pattern toggles, migration, saved looks, immersive controls, and landscape layout. The shipped shader is rendered at fixed phases to verify distinct beat, bar, and musical-motion effects in all four patterns; audio off must produce exactly the original ambient image. Pixel comparisons verify the transparent overlay and live adjustments. Evidence is written to the app's external `files/review` directory.
 
 ```sh
 ./gradlew :app:connectedDebugAndroidTest
 ```
 
-The device tests grant audio access and approve Android's capture dialog on the test device. They generate a short test tone. Use an emulator or a device prepared for testing.
+The device tests grant audio access, approve Android's capture dialog, and play an original musical fixture on the test device. Use an emulator or a device prepared for testing.
+
+After installing the signed release alongside the debug and test APKs, the optional release smoke test verifies actual inference after R8 shrinking, system capture, tempo corrections, manual bar alignment, automatic recovery, and restart behavior:
+
+```sh
+adb shell am instrument -w -e releaseSmoke true \
+  -e class com.caleb.prism.ReleaseRhythmSmokeTest \
+  com.caleb.prism.debug.test/androidx.test.runner.AndroidJUnitRunner
+```
 
 Normal rendering uses native resolution at approximately 60 fps. Battery saver lowers this to a 1,080-pixel longest edge and approximately 30 fps. The tuning overlay shows measured frame rate. Background rendering stops with the activity lifecycle. Paused rendering uses a low refresh rate while still accepting visual adjustments. Actual frame rate depends on the device and scene complexity.

@@ -1,0 +1,5 @@
+*.onnx binary
+*.f32 binary
+*.pcm binary
+# Keep the vendored, hash-pinned upstream source byte for byte.
+tools/beatnet/model.py -text whitespace=cr-at-eol

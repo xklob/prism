@@ -84,6 +84,7 @@ class MainActivity : ComponentActivity() {
         if (!resolved.audioEnabled || resolved.source != settings.source || resolved.paused) disconnectAudio()
         settings = resolved
         AudioEngine.sensitivity = resolved.sensitivity
+        AudioEngine.beatsPerBar = resolved.beatsPerBar
         store.save(resolved)
         surface?.update(resolved)
         updateWakeLock()
@@ -98,6 +99,7 @@ class MainActivity : ComponentActivity() {
             return
         }
         AudioEngine.sensitivity = settings.sensitivity
+        AudioEngine.beatsPerBar = settings.beatsPerBar
         if (settings.source == AudioSource.MICROPHONE) {
             stopService(Intent(this, PlaybackCaptureService::class.java))
             AudioEngine.startMicrophone(this)

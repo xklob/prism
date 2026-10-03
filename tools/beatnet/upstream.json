@@ -1,0 +1,10 @@
+{
+  "source": "https://github.com/mjhydri/BeatNet",
+  "commit": "81cedd4beeb7235262db80969a0c9ce9a48a0ed4",
+  "files": {
+    "model.py": "65d38b46a12cfa6f33ad09d0a2cbc2cfb628721816e4cf9bcbc2197adb98c971",
+    "LICENSE": "7e7170e3cebf88a9f60c7b8421418323c09304da1af4d5e90f4da1dc1c8a2661",
+    "model_1_weights.pt": "619091bc317ca3e83b45591d46f6de3d5a41588bcb39fe9fe7be30cffa6aca84",
+    "model_3_weights.pt": "0c52a074ea38e8cb4a760ecfa3747c9cf91a1e3cd19f238eed80b0de763989ca"
+  }
+}

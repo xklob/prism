@@ -14,6 +14,8 @@ import org.junit.Assert.*
 import org.junit.runner.RunWith
 import org.junit.runners.MethodSorters
 import java.io.File
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import java.util.regex.Pattern
 import kotlin.math.*
 
@@ -116,9 +118,8 @@ class PrismDeviceTest {
         assertEquals(AudioSource.SYSTEM, AudioEngine.status.value.source)
 
         val sampleRate = 48000
-        val pcm = ShortArray(sampleRate) { i ->
-            (Short.MAX_VALUE * (0.4 * sin(2*PI*96*i/sampleRate) + 0.12*sin(2*PI*1000*i/sampleRate) + 0.08*sin(2*PI*6000*i/sampleRate))).toInt().toShort()
-        }
+        val bytes=instrumentation.context.assets.open("rhythm/drums128.pcm").use { it.readBytes() }
+        val pcm=ShortArray(bytes.size/2).also { ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN).asShortBuffer().get(it) }
         val track = AudioTrack.Builder()
             .setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).setAllowedCapturePolicy(AudioAttributes.ALLOW_CAPTURE_BY_ALL).build())
             .setAudioFormat(AudioFormat.Builder().setSampleRate(sampleRate).setChannelMask(AudioFormat.CHANNEL_OUT_MONO).setEncoding(AudioFormat.ENCODING_PCM_16BIT).build())
@@ -127,14 +128,27 @@ class PrismDeviceTest {
             assertEquals(pcm.size, track.write(pcm, 0, pcm.size))
             assertEquals(AudioTrack.SUCCESS, track.setLoopPoints(0, pcm.size, -1))
             track.play()
-            SystemClock.sleep(2500)
+            SystemClock.sleep(20000)
             val levels = AudioEngine.levels
-            File(evidence, "system-audio-levels.txt").writeText("source=${AudioEngine.status.value.source}\nbass=${levels.bass}\nmid=${levels.mid}\nhigh=${levels.high}\nenergy=${levels.energy}\n")
-            assertTrue("Playback PCM must drive bass, got ${levels.bass}", levels.bass > 0.2f)
-            assertTrue("Playback PCM must drive midrange, got ${levels.mid}", levels.mid > 0.05f)
-            assertTrue("Playback PCM must drive treble, got ${levels.high}", levels.high > 0.02f)
+            val rhythm=AudioEngine.rhythm
+            File(evidence, "system-audio-levels.txt").writeText("source=${AudioEngine.status.value.source}\nenergy=${levels.energy}\nrhythm=$rhythm\ninference_ms=${AudioEngine.inferenceMs}\n")
+            assertTrue("Playback PCM must reach the analyzer", levels.energy > 0.05f)
+            assertTrue("Real system playback must lock to beats: $rhythm",rhythm.locked)
+            assertEquals(128f,rhythm.bpm,2f)
+            assertTrue("Real system playback must identify bar starts: $rhythm",rhythm.barLocked)
+            assertEquals(4,rhythm.beatsPerBar)
+            val playbackTimestamp=AudioTimestamp()
+            if (track.getTimestamp(playbackTimestamp)) {
+                val songTime=playbackTimestamp.framePosition/48000.0+(rhythm.timestamp-playbackTimestamp.nanoTime/1e9)
+                val expected=(songTime-.3)*128/60
+                val phaseError=abs((rhythm.position-expected)-round(rhythm.position-expected))*60/128
+                File(evidence,"capture-phase.txt").writeText("phase_error_ms=${phaseError*1000}\nsong_time=$songTime\n")
+                assertTrue("Captured beat phase must stay within 100 ms of playback: $phaseError",phaseError<.100)
+            }
             ShaderProbe(context, evidence).use { probe ->
-                for (scene in Scene.entries) probe.verifyResponse(scene, levels, "captured")
+                val firstBeat=rhythm.copy(position=rhythm.barOffset.toDouble())
+                val motion=BeatMotion().update(firstBeat,levels,firstBeat.timestamp,VisualSettings(audioEnabled=true))
+                for (scene in Scene.entries) probe.verifyResponse(scene, motion, "captured")
             }
             screenshot("07-aurora-system-live")
             click("Kaleido")
@@ -153,6 +167,7 @@ class PrismDeviceTest {
             track.pause()
             SystemClock.sleep(3000)
             assertTrue("Silence must decay", AudioEngine.levels.energy < 0.02f)
+            assertFalse("Silence must stop musical pulses",AudioEngine.rhythm.signalPresent)
             click("Stop")
             assertFalse(AudioEngine.status.value.running)
             assertEquals(0f, AudioEngine.levels.energy, 0f)
@@ -210,6 +225,13 @@ class PrismDeviceTest {
 
     private fun adjust(label: String, fraction: Float) {
         refreshTree()
+        repeat(5) {
+            val found=device.findObject(By.desc(label))
+            if (found == null || found.visibleBounds.height() < 35) {
+                device.findObject(By.scrollable(true))?.scroll(Direction.DOWN,0.45f)
+                SystemClock.sleep(250); refreshTree()
+            }
+        }
         val slider = device.wait(Until.findObject(By.desc(label)), 5000)
         assertNotNull("Missing slider: $label", slider)
         val bounds = slider.visibleBounds
@@ -293,14 +315,10 @@ class PrismDeviceTest {
         device.setOrientationNatural()
     }
 
-    @Test fun g_everyPatternRespondsToEachBandAndOffIsExact() {
+    @Test fun g_everyPatternHasBeatAndBarAccentsAndOffIsExact() {
         ShaderProbe(context, evidence).use { probe ->
-            for (frequency in listOf(93.75, 1007.8125, 6000.0)) {
-                val analyzer = SpectrumAnalyzer()
-                val samples = ShortArray(2048) { (sin(2 * PI * frequency * it / 48000) * 0.015 * Short.MAX_VALUE).toInt().toShort() }
-                var levels = AudioLevels()
-                repeat(8) { levels = analyzer.analyze(samples) }
-                for (scene in Scene.entries) probe.verifyResponse(scene, levels, "quiet-${frequency.toInt()}")
+            for ((label,motion) in listOf("beat" to MusicalMotion(beat=1f), "bar" to MusicalMotion(bar=1f), "flow" to MusicalMotion(flow=0.8f))) {
+                for (scene in Scene.entries) probe.verifyResponse(scene, motion, label)
             }
         }
     }
@@ -324,6 +342,56 @@ class PrismDeviceTest {
             store.save(settings.copy(audioEnabled = false))
             assertFalse("Recalling a look cannot enable capture", store.loadLook(scene, AudioSource.SYSTEM).audioEnabled)
             assertEquals(1.7f, store.loadLook(scene, AudioSource.SYSTEM).audioAmount, 0f)
+        }
+    }
+
+    @Test fun i_androidModelMatchesReferenceAndFullPcmPathTracksMusic() {
+        fun floats(name: String): FloatArray {
+            val bytes=instrumentation.context.assets.open("rhythm/$name.f32").use { it.readBytes() }
+            return FloatArray(bytes.size/4).also { ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN).asFloatBuffer().get(it) }
+        }
+        BeatDetector(context).use { detector ->
+            assertArrayEquals(floats("probabilities"),detector.predict(floats("features")),0.00002f)
+            detector.reset()
+            assertArrayEquals(floats("probabilities"),detector.predict(floats("features")),0.00002f)
+        }
+        val bytes=instrumentation.context.assets.open("rhythm/drums128.pcm").use { it.readBytes() }
+        val pcm=ShortArray(bytes.size/2).also { ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN).asShortBuffer().get(it) }
+        var result=RhythmState()
+        val inference=mutableListOf<Float>()
+        RhythmAnalyzer(context).use { analyzer ->
+            for (start in 0 until pcm.size-960 step 960) {
+                analyzer.process(pcm.copyOfRange(start,start+960),1000.0+start/48000.0,1.4f,0) { result=it }
+                if (start>48000*2) inference.add(analyzer.inferenceMs)
+            }
+        }
+        assertTrue("End-to-end PCM must find tempo: $result",result.locked)
+        assertEquals(128f,result.bpm,2f)
+        assertTrue("End-to-end PCM must find bars: $result",result.barLocked)
+        assertEquals(4,result.beatsPerBar)
+        val expected=(result.timestamp-1000.0-.3)*128/60
+        val error=abs((result.position-expected)-round(result.position-expected))*60/128
+        assertTrue("Beat phase error must be under 70 ms: $error",error<.070)
+        assertEquals(Math.floorMod(round(expected).toInt(),4),Math.floorMod(round(result.position).toInt()-result.barOffset,4))
+        val sorted=inference.sorted()
+        val p95=sorted[(sorted.size*.95).toInt()]
+        File(evidence,"rhythm-pipeline.txt").writeText("$result\nphase_error_ms=${error*1000}\ninference_average_ms=${inference.average()}\ninference_p95_ms=$p95\n")
+        assertTrue("Analysis must keep up with 20 ms audio hops: p95=$p95",p95<20f)
+    }
+
+    @Test fun j_steadyToneAndSilenceDoNotBecomeARegularBeat() {
+        var result=RhythmState()
+        RhythmAnalyzer(context).use { analyzer ->
+            for (block in 0 until 750) {
+                val pcm=ShortArray(960) { i -> (8000*sin(2*PI*440*(block*960+i)/48000)).toInt().toShort() }
+                analyzer.process(pcm,1000.0+block*.02,1.4f,0) { result=it }
+                if (block>500) assertFalse("A steady note is not a musical beat: $result",result.locked)
+            }
+            repeat(100) { block ->
+                analyzer.process(ShortArray(960),1015.0+block*.02,1.4f,0) { result=it }
+            }
+            assertFalse(result.signalPresent)
+            assertFalse(result.barLocked)
         }
     }
 }

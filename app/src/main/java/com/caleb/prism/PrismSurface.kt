@@ -54,7 +54,7 @@ class PrismRenderer(private val context: Context, private val onError: (String) 
     private var rotation = 0f
     private var colorPhase = 0f
     private var morphTime = 0f
-    private val audioResponse = AudioResponse()
+    private val beatMotion = BeatMotion()
     private var frameCounter = 0
     private var statsStart = 0L
     @Volatile var measuredFps = 0f; private set
@@ -84,7 +84,7 @@ class PrismRenderer(private val context: Context, private val onError: (String) 
             glGetProgramiv(program, GL_LINK_STATUS, linked, 0)
             check(linked[0] != 0) { glGetProgramInfoLog(program) }
             uniforms.clear()
-            for (name in listOf("uResolution", "uTouch", "uTime", "uRotation", "uColorPhase", "uMorphTime", "uIntensity", "uComplexity", "uSymmetry", "uDistortion", "uZoom", "uLineWidth", "uHue", "uSaturation", "uContrast", "uMode", "uPreviousMode", "uTransition", "uPalette", "uAudio", "uBeat")) {
+            for (name in listOf("uResolution", "uTouch", "uTime", "uRotation", "uColorPhase", "uMorphTime", "uIntensity", "uComplexity", "uSymmetry", "uDistortion", "uZoom", "uLineWidth", "uHue", "uSaturation", "uContrast", "uMode", "uPreviousMode", "uTransition", "uPalette", "uRhythm")) {
                 uniforms[name] = glGetUniformLocation(program, name)
             }
             val vertices = ByteBuffer.allocateDirect(32).order(ByteOrder.nativeOrder()).asFloatBuffer()
@@ -131,8 +131,7 @@ class PrismRenderer(private val context: Context, private val onError: (String) 
         }
         transition = min(1f, transition + dt * 1.7f)
         if (program != 0) {
-            val audio = audioResponse.update(AudioEngine.levels, s.audioEnabled, s.paused, dt,
-                s.audioAmount, s.bassGain, s.midGain, s.trebleGain, s.smoothing)
+            val motion = beatMotion.update(AudioEngine.rhythm, AudioEngine.levels, System.nanoTime()/1e9, s)
             glUseProgram(program)
             glUniform1f(uniforms.getValue("uTime"), time)
             glUniform1f(uniforms.getValue("uRotation"), rotation)
@@ -152,8 +151,7 @@ class PrismRenderer(private val context: Context, private val onError: (String) 
             glUniform1i(uniforms.getValue("uPreviousMode"), previousMode)
             glUniform1f(uniforms.getValue("uTransition"), transition)
             glUniform1i(uniforms.getValue("uPalette"), s.palette.ordinal)
-            glUniform4f(uniforms.getValue("uAudio"), audio.bass, audio.mid, audio.treble, audio.energy)
-            glUniform1f(uniforms.getValue("uBeat"), audio.beat)
+            glUniform4f(uniforms.getValue("uRhythm"), motion.beat, motion.bar, motion.flow, motion.texture)
             glDrawArrays(GL_TRIANGLE_STRIP, 0, 4)
         } else { glClearColor(0.03f, 0.03f, 0.08f, 1f); glClear(GL_COLOR_BUFFER_BIT) }
         if (statsStart == 0L) statsStart = started

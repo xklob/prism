@@ -8,3 +8,5 @@ signing.properties
 dist/
 review/
 .idea/
+__pycache__/
+*.pyc

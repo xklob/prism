@@ -56,7 +56,7 @@ class ShaderProbe(context: Context, private val evidence: File) : AutoCloseable 
         glViewport(0, 0, width, height)
     }
 
-    private fun render(scene: Scene, audio: AudioMotion): ByteArray {
+    private fun render(scene: Scene, audio: MusicalMotion): ByteArray {
         val s = VisualSettings.defaults(scene)
         glUseProgram(program)
         fun f(name: String, value: Float) = glUniform1f(glGetUniformLocation(program, name), value)
@@ -68,8 +68,7 @@ class ShaderProbe(context: Context, private val evidence: File) : AutoCloseable 
         f("uDistortion", s.distortion); f("uZoom", s.zoom); f("uLineWidth", s.lineWidth)
         f("uHue", s.hue); f("uSaturation", s.saturation); f("uContrast", s.contrast)
         i("uMode", scene.id); i("uPreviousMode", scene.id); f("uTransition", 1f); i("uPalette", s.palette.ordinal)
-        glUniform4f(glGetUniformLocation(program, "uAudio"), audio.bass, audio.mid, audio.treble, audio.energy)
-        f("uBeat", audio.beat)
+        glUniform4f(glGetUniformLocation(program, "uRhythm"), audio.beat, audio.bar, audio.flow, audio.texture)
         glDrawArrays(GL_TRIANGLE_STRIP, 0, 4)
         val buffer = ByteBuffer.allocateDirect(width * height * 4)
         glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, buffer)
@@ -77,11 +76,9 @@ class ShaderProbe(context: Context, private val evidence: File) : AutoCloseable 
         return ByteArray(buffer.capacity()).also { buffer.get(it) }
     }
 
-    fun verifyResponse(scene: Scene, input: AudioLevels, label: String) {
-        val response = AudioResponse()
-        val ambient = render(scene, AudioMotion())
-        repeat(20) { response.update(input, true, false, 1f / 60, 1f, 1f, 1f, 1f, 0.15f) }
-        val active = render(scene, response.motion)
+    fun verifyResponse(scene: Scene, input: MusicalMotion, label: String) {
+        val ambient = render(scene, MusicalMotion())
+        val active = render(scene, input)
         var difference = 0.0
         var changed = 0
         for (pixel in 0 until width * height) {
@@ -92,10 +89,10 @@ class ShaderProbe(context: Context, private val evidence: File) : AutoCloseable 
         }
         difference /= width * height * 3 * 255.0
         val fraction = changed.toDouble() / (width * height)
-        File(evidence, "shader-response.txt").appendText("${scene.name} $label rgb_difference=$difference changed_fraction=$fraction bass=${input.bass} mids=${input.mid} treble=${input.high}\n")
+        File(evidence, "shader-response.txt").appendText("${scene.name} $label rgb_difference=$difference changed_fraction=$fraction beat=${input.beat} bar=${input.bar} flow=${input.flow}\n")
         assertTrue("${scene.title} / $label must change visibly: $difference", difference > 0.025)
         assertTrue("${scene.title} / $label must affect substantial geometry: $fraction", fraction > 0.15)
-        val off = response.update(input, false, true, 1f / 60, 1f, 1f, 1f, 1f, 0.15f)
+        val off = BeatMotion().update(RhythmState(),AudioLevels(),10.0,VisualSettings(audioEnabled=false))
         assertArrayEquals("Audio off must exactly restore the ambient render", ambient, render(scene, off))
         fun save(bytes: ByteArray, name: String) {
             val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)

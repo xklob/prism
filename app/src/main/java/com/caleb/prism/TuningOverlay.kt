@@ -53,12 +53,22 @@ fun TuningOverlay(
     var activeControl by remember { mutableStateOf<String?>(null) }
     var notice by remember { mutableStateOf("") }
     var measuredFps by remember { mutableFloatStateOf(0f) }
+    var timing by remember { mutableStateOf(RhythmState()) }
+    var timingNow by remember { mutableDoubleStateOf(0.0) }
     val context = LocalContext.current
     val store = remember(context) { SettingsStore(context) }
     var saved by remember(s.scene) { mutableStateOf(store.hasSavedLook(s.scene)) }
     val otherAlpha by animateFloatAsState(if (activeControl == null) 1f else 0f, tween(120), label = "Control visibility")
     LaunchedEffect(notice) { if (notice.isNotEmpty()) { delay(2200); notice = "" } }
     LaunchedEffect(Unit) { while (true) { measuredFps = fps(); delay(1000) } }
+    LaunchedEffect(status.running, tab, hidden) {
+        if (!status.running) timing = RhythmState()
+        while (status.running && tab == "Audio" && !hidden) {
+            timing = AudioEngine.rhythm
+            timingNow = System.nanoTime()/1e9
+            delay(50)
+        }
+    }
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val landscape = maxWidth > maxHeight
         val controlsWidth = if (landscape) Modifier.width(330.dp) else Modifier.fillMaxWidth()
@@ -158,19 +168,49 @@ fun TuningOverlay(
                                     }
                                 }
                                 Column(Modifier.alpha(otherAlpha)) {
-                                    AudioBandMeters(status.running)
+                                    RhythmReadout(status.running, timing, timingNow)
                                     Text(if (!s.audioEnabled) "Enable audio to make this pattern follow sound."
-                                        else if (!status.running) "Choose an input, then Connect. Quiet audio is boosted automatically."
-                                        else "Bass expands · Mids deform · Treble adds detail", style = ReadableText, fontSize = 10.sp,
+                                        else if (!status.running) "Choose an input, then Connect to find beats and bars."
+                                        else "Beats pulse · Bars reshape · Motion follows tempo", style = ReadableText, fontSize = 10.sp,
                                         modifier = Modifier.padding(vertical = 6.dp))
+                                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                        TextButton(onClick = AudioEngine::tapTempo, enabled = status.running, contentPadding = PaddingValues(4.dp)) {
+                                            Text("Tap tempo", style = ReadableText, fontSize = 11.sp)
+                                        }
+                                        TextButton(onClick = AudioEngine::alignBar, enabled = status.running && timing.bpm > 0f, contentPadding = PaddingValues(4.dp)) {
+                                            Text("Bar starts here", style = ReadableText, fontSize = 11.sp)
+                                        }
+                                        TextButton(onClick = AudioEngine::automaticTiming, enabled = status.running, contentPadding = PaddingValues(4.dp)) {
+                                            Text("Auto timing", style = ReadableText, fontSize = 11.sp)
+                                        }
+                                    }
+                                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                        Text("Beats per bar", style = ReadableText, fontSize = 11.sp, modifier = Modifier.weight(1f))
+                                        listOf(0 to "Auto", 3 to "3", 4 to "4").forEach { (meter,label) ->
+                                            TextButton(onClick = { change(s.copy(beatsPerBar = meter)) }, contentPadding = PaddingValues(4.dp), modifier = Modifier.width(48.dp)) {
+                                                Text(label, style = ReadableText, fontSize = 11.sp, color = if (s.beatsPerBar == meter) OverlayAccent else Color.White)
+                                            }
+                                        }
+                                    }
+                                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                        Text("Correct tempo", style = ReadableText, fontSize = 11.sp, modifier = Modifier.weight(1f))
+                                        TextButton(onClick = AudioEngine::halfTempo, enabled = status.running && timing.bpm > 0f) {
+                                            Text("½ BPM", style = ReadableText, fontSize = 11.sp)
+                                        }
+                                        TextButton(onClick = AudioEngine::doubleTempo, enabled = status.running && timing.bpm > 0f) {
+                                            Text("2× BPM", style = ReadableText, fontSize = 11.sp)
+                                        }
+                                    }
                                 }
                                 if (status.message != null) Text(status.message, style = ReadableText, fontSize = 10.sp, modifier = Modifier.alpha(otherAlpha))
                                 slider("Reaction strength", s.audioAmount, 0f..2.5f, "${(s.audioAmount * 100).roundToInt()}%") { change(s.copy(audioAmount = it)) }
-                                slider("Audio sensitivity", s.sensitivity, 0.4f..4f, "%.1f×".format(s.sensitivity)) { change(s.copy(sensitivity = it)) }
-                                slider("Bass / expansion", s.bassGain, 0f..2.5f, "%.1f×".format(s.bassGain)) { change(s.copy(bassGain = it)) }
-                                slider("Mids / shape", s.midGain, 0f..2.5f, "%.1f×".format(s.midGain)) { change(s.copy(midGain = it)) }
-                                slider("Treble / detail", s.trebleGain, 0f..2.5f, "%.1f×".format(s.trebleGain)) { change(s.copy(trebleGain = it)) }
-                                slider("Response smoothing", s.smoothing, 0f..1f, "${(s.smoothing * 100).roundToInt()}%") { change(s.copy(smoothing = it)) }
+                                slider("Beat pulse", s.beatImpact, 0f..2f, "${(s.beatImpact * 100).roundToInt()}%") { change(s.copy(beatImpact = it)) }
+                                slider("Bar accent", s.barImpact, 0f..2f, "${(s.barImpact * 100).roundToInt()}%") { change(s.copy(barImpact = it)) }
+                                slider("Musical motion", s.flowImpact, 0f..2f, "${(s.flowImpact * 100).roundToInt()}%") { change(s.copy(flowImpact = it)) }
+                                slider("Pulse length", s.pulseLength, 0.08f..0.8f, "%.2f beats".format(s.pulseLength)) { change(s.copy(pulseLength = it)) }
+                                slider("Sync offset", s.syncOffsetMs, -250f..250f, "%+.0f ms".format(s.syncOffsetMs)) { change(s.copy(syncOffsetMs = it)) }
+                                slider("Input gain", s.sensitivity, 0.4f..4f, "%.1f×".format(s.sensitivity)) { change(s.copy(sensitivity = it)) }
+                                slider("Extra audio texture", s.textureAmount, 0f..1f, "${(s.textureAmount * 100).roundToInt()}%") { change(s.copy(textureAmount = it)) }
                             }
                         }
                     }
@@ -186,23 +226,28 @@ fun TuningOverlay(
     }
 }
 
-@Composable private fun AudioBandMeters(running: Boolean) {
-    var levels by remember { mutableStateOf(AudioLevels()) }
-    LaunchedEffect(running) {
-        if (!running) levels = AudioLevels()
-        while (running) { levels = AudioEngine.levels; delay(50) }
-    }
-    Row(Modifier.fillMaxWidth().padding(vertical = 5.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-        listOf("Bass" to levels.bass, "Mids" to levels.mid, "Treble" to levels.high).forEach { (name, level) ->
-            Column(Modifier.weight(1f).semantics { contentDescription = "$name input ${(level * 100).roundToInt()} percent" }) {
-                Text(name, style = ReadableText, fontSize = 10.sp)
-                Canvas(Modifier.fillMaxWidth().height(9.dp)) {
-                    val start = Offset(0f, size.height / 2)
-                    drawLine(Color.White.copy(alpha = 0.25f), start, Offset(size.width, start.y), 2.dp.toPx())
-                    drawLine(OverlayAccent, start, Offset(size.width * level, start.y), 2.dp.toPx())
+@Composable private fun RhythmReadout(running: Boolean, timing: RhythmState, now: Double) {
+    Column(Modifier.fillMaxWidth().padding(vertical = 5.dp)) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(if (timing.bpm > 0f) "%.1f BPM".format(timing.bpm) else "··· BPM", style = ReadableText,
+                fontSize = 20.sp, fontFamily = FontFamily.Monospace, modifier = Modifier.weight(1f))
+            val active=if (timing.locked) timing.beatInBar(now) else 0
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.semantics {
+                contentDescription = if (timing.barLocked) "Beat $active of ${timing.beatsPerBar}" else "Bar not locked"
+            }) {
+                for (beat in 1..timing.beatsPerBar) {
+                    Box(Modifier.size(25.dp).border(1.dp, if (timing.barLocked && beat == 1) OverlayAccent else Color.White.copy(alpha = 0.5f), CircleShape)
+                        .background(if (beat == active) OverlayAccent else Color.Transparent, CircleShape),contentAlignment = Alignment.Center) {
+                        Text(if (timing.barLocked) "$beat" else "·", color = if (beat == active) OverlayInk else Color.White, fontSize = 11.sp)
+                    }
                 }
             }
         }
+        val beatStatus=if (!running) "Disconnected" else if (!timing.signalPresent) "Waiting for sound" else if (timing.manualTempo) "Manual tempo"
+            else if (timing.locked) "Beat locked" else "Finding beat"
+        val barStatus=if (timing.manualBar) "Bar aligned" else if (timing.barLocked) "Bar locked · ${timing.beatsPerBar} beats" else "Finding bar"
+        Text(if (running) "$beatStatus · $barStatus" else beatStatus, style = ReadableText, color = OverlayAccent, fontSize = 10.sp,
+            modifier = Modifier.padding(top = 4.dp))
     }
 }
 

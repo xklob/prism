@@ -206,16 +206,18 @@ fun PrismApp(
 
 @Composable private fun AudioPanel(source: AudioSource, status: CaptureStatus, connecting: Boolean, onSource: (AudioSource) -> Unit, onConnect: () -> Unit, onDisconnect: () -> Unit) {
     var energy by remember { mutableFloatStateOf(0f) }
+    var rhythm by remember { mutableStateOf(RhythmState()) }
     var silentSeconds by remember { mutableIntStateOf(0) }
     LaunchedEffect(status.running) {
         var quietTicks = 0
         while (status.running) {
             energy = AudioEngine.levels.energy
+            rhythm = AudioEngine.rhythm
             quietTicks = if (energy < 0.015f) quietTicks + 1 else 0
             silentSeconds = quietTicks / 10
             delay(100)
         }
-        energy = 0f; silentSeconds = 0
+        energy = 0f; silentSeconds = 0; rhythm = RhythmState()
     }
     Column(Modifier.padding(horizontal = 24.dp).clip(RoundedCornerShape(18.dp)).background(Panel.copy(alpha = 0.9f)).border(1.dp, Color.White.copy(alpha = 0.10f), RoundedCornerShape(18.dp)).padding(14.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -237,7 +239,10 @@ fun PrismApp(
                 }
             }
             Spacer(Modifier.width(10.dp))
-            Text(if (status.running) if (silentSeconds >= 5) "Waiting for sound" else "Listening live" else "Ready when you are", color = if (status.running) Mint else Muted, fontSize = 11.sp, modifier = Modifier.weight(1f))
+            val timingLabel = if (!status.running) "Ready when you are" else if (silentSeconds >= 5) "Waiting for sound"
+                else if (rhythm.locked && rhythm.barLocked) "${rhythm.bpm.roundToInt()} BPM · ${rhythm.beatInBar(System.nanoTime()/1e9)}/${rhythm.beatsPerBar}"
+                else if (rhythm.locked) "${rhythm.bpm.roundToInt()} BPM · Finding bar" else "Finding beat"
+            Text(timingLabel, color = if (status.running) Mint else Muted, fontSize = 11.sp, modifier = Modifier.weight(1f))
             TextButton(onClick = if (status.running) onDisconnect else onConnect, enabled = !connecting, contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)) {
                 Text(if (connecting) "Connecting…" else if (status.running) "Stop" else "Connect audio", fontSize = 11.sp)
             }

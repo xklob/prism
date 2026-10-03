@@ -1,0 +1,18 @@
+BeatNet
+Author: Mojtaba Heydari and BeatNet contributors
+Source: https://github.com/mjhydri/BeatNet
+Pinned revision: 81cedd4beeb7235262db80969a0c9ce9a48a0ed4
+License: Creative Commons Attribution 4.0 International (CC BY 4.0).
+See BEATNET-LICENSE.txt and https://creativecommons.org/licenses/by/4.0/
+
+Prism includes BeatNet model 1 and model 3 weights, converted from PyTorch to ONNX.
+The conversion exposes recurrent state explicitly and applies output softmax.
+Prism supplies its own Kotlin audio frontend, tempo/phase/bar tracker, capture
+integration, and visual response. It does not use BeatNet's particle filter.
+Conversion scripts, original architecture, hashes, and validation are included
+in the source project under tools/beatnet/. No upstream endorsement is implied.
+
+ONNX Runtime
+Copyright (c) Microsoft Corporation. All rights reserved.
+Source: https://github.com/microsoft/onnxruntime/tree/v1.23.2
+License: MIT. See ONNX-RUNTIME-LICENSE.txt.

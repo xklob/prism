@@ -54,10 +54,13 @@ data class VisualSettings(
     val colorSpeed: Float = 0.04f,
     val rotation: Float = 0.12f,
     val morph: Float = 0.45f,
-    val bassGain: Float = 1f,
-    val midGain: Float = 1f,
-    val trebleGain: Float = 1f,
-    val smoothing: Float = 0.15f
+    val beatImpact: Float = 1f,
+    val barImpact: Float = 0.9f,
+    val flowImpact: Float = 0.5f,
+    val pulseLength: Float = 0.28f,
+    val textureAmount: Float = 0f,
+    val beatsPerBar: Int = 0,
+    val syncOffsetMs: Float = 0f
 ) {
     fun randomLook(random: Random = Random.Default) = copy(
         palette = Palette.entries[random.nextInt(Palette.entries.size)],
@@ -66,7 +69,8 @@ data class VisualSettings(
         zoom = random.nextFloat() * 0.9f + 0.75f, hue = random.nextFloat(),
         rotation = random.nextFloat() * 0.7f - 0.35f, morph = random.nextFloat() * 0.7f + 0.15f
     )
-    fun resetLook() = defaults(scene).copy(source = source, audioEnabled = audioEnabled, sensitivity = sensitivity, batterySaver = batterySaver, paused = paused)
+    fun resetLook() = defaults(scene).copy(source = source, audioEnabled = audioEnabled, sensitivity = sensitivity,
+        beatsPerBar = beatsPerBar, syncOffsetMs = syncOffsetMs, batterySaver = batterySaver, paused = paused)
 
     companion object {
         fun defaults(scene: Scene) = when (scene) {
@@ -114,9 +118,11 @@ class SettingsStore(context: Context) {
             lineWidth = f("lineWidth", d.lineWidth, 0.6f, 3f), hue = f("hue", d.hue, 0f, 1f),
             saturation = f("saturation", d.saturation, 0f, 1.6f), contrast = f("contrast", d.contrast, 0.6f, 1.8f),
             colorSpeed = f("colorSpeed", d.colorSpeed, 0f, 0.2f), rotation = f("rotation", d.rotation, -1f, 1f),
-            morph = f("morph", d.morph, 0f, 1.5f), bassGain = f("bassGain", d.bassGain, 0f, 2.5f),
-            midGain = f("midGain", d.midGain, 0f, 2.5f), trebleGain = f("trebleGain", d.trebleGain, 0f, 2.5f),
-            smoothing = f("smoothing", d.smoothing, 0f, 1f)
+            morph = f("morph", d.morph, 0f, 1.5f), beatImpact = f("beatImpact", d.beatImpact, 0f, 2f),
+            barImpact = f("barImpact", d.barImpact, 0f, 2f), flowImpact = f("flowImpact", d.flowImpact, 0f, 2f),
+            pulseLength = f("pulseLength", d.pulseLength, 0.08f, 0.8f), textureAmount = f("textureAmount", d.textureAmount, 0f, 1f),
+            beatsPerBar = prefs.getInt("beatsPerBar", 0).takeIf { it in listOf(0,3,4) } ?: 0,
+            syncOffsetMs = prefs.getFloat("syncOffsetMs", 0f).let { if (it.isFinite()) it.coerceIn(-250f,250f) else 0f }
         )
     }
     fun save(s: VisualSettings) = write(s, "scene.${s.scene.name}.", shared = true)
@@ -128,12 +134,14 @@ class SettingsStore(context: Context) {
             "distortion" to s.distortion, "zoom" to s.zoom, "lineWidth" to s.lineWidth,
             "hue" to s.hue, "saturation" to s.saturation, "contrast" to s.contrast,
             "colorSpeed" to s.colorSpeed, "rotation" to s.rotation, "morph" to s.morph,
-            "bassGain" to s.bassGain, "midGain" to s.midGain, "trebleGain" to s.trebleGain, "smoothing" to s.smoothing,
+            "beatImpact" to s.beatImpact, "barImpact" to s.barImpact, "flowImpact" to s.flowImpact,
+            "pulseLength" to s.pulseLength, "textureAmount" to s.textureAmount,
             "audioAmount" to s.audioAmount
         )) editor.putFloat(prefix + key, value)
         if (shared) editor.putInt("scene", s.scene.id).putString("sceneName", s.scene.name)
             .putBoolean(prefix + "audioEnabled", s.audioEnabled).putInt("source", s.source.ordinal)
             .putFloat("sensitivity", s.sensitivity).putBoolean("batterySaver", s.batterySaver)
+            .putInt("beatsPerBar", s.beatsPerBar).putFloat("syncOffsetMs", s.syncOffsetMs)
         editor.apply()
     }
 }

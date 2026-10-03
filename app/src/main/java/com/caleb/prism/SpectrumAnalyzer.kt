@@ -4,21 +4,18 @@ import kotlin.math.*
 
 data class AudioLevels(
     val bass: Float = 0f, val mid: Float = 0f, val high: Float = 0f,
-    val energy: Float = 0f, val beat: Float = 0f,
+    val energy: Float = 0f,
     val bands: FloatArray = FloatArray(32)
 )
 
 /** Streaming Hann-windowed FFT. Input PCM and derived levels stay in memory only. */
-class SpectrumAnalyzer(private val sampleRate: Int = 48000, val size: Int = 2048) {
+class SpectrumAnalyzer(private val sampleRate: Int = 48000, val size: Int = 2048, private val hopSize: Int = size) {
     init { require(size > 1 && size and (size - 1) == 0); require(sampleRate > 0) }
     private val real = DoubleArray(size)
     private val imaginary = DoubleArray(size)
     private val window = DoubleArray(size) { 0.5 - 0.5 * cos(2 * PI * it / (size - 1)) }
     private var previous = AudioLevels()
     private var peakRms = 0.01
-    private var previousBass = 0.0
-    private var previousRms = 0.0
-    private var sinceBeat = 1.0
 
     fun analyze(samples: ShortArray, sensitivity: Float = 1.4f): AudioLevels {
         require(samples.size == size)
@@ -39,7 +36,7 @@ class SpectrumAnalyzer(private val sampleRate: Int = 48000, val size: Int = 2048
             return sqrt(sum) / size * 3.2
         }
         val rms = sqrt(squareSum / size)
-        val dt = size.toDouble() / sampleRate
+        val dt = hopSize.toDouble() / sampleRate
         // Normalize quiet playback quickly, without turning silence into a signal.
         // Slow peak release preserves relative beat dynamics instead of chasing every sample.
         peakRms = max(rms, peakRms * exp(-dt / 2.5))
@@ -52,13 +49,6 @@ class SpectrumAnalyzer(private val sampleRate: Int = 48000, val size: Int = 2048
             return old + (value - old) * (1.0 - exp(-dt / tau)).toFloat()
         }
         val bassPower = power(35.0, 250.0)
-        sinceBeat += dt
-        val onset = bassPower > previousBass * 1.4 + 0.003 / autoGain || rms > previousRms * 1.55 + 0.003 / autoGain
-        val beat = if (gate > 0.1 && onset && sinceBeat > 0.16) {
-            sinceBeat = 0.0; 1f
-        } else previous.beat * exp(-dt / 0.12).toFloat()
-        previousBass = bassPower
-        previousRms = rms
         val bands = FloatArray(32) { i ->
             val low = 35.0 * (14000.0 / 35.0).pow(i / 32.0)
             val high = 35.0 * (14000.0 / 35.0).pow((i + 1) / 32.0)
@@ -68,7 +58,7 @@ class SpectrumAnalyzer(private val sampleRate: Int = 48000, val size: Int = 2048
             smooth(normalized(bassPower), previous.bass),
             smooth(normalized(power(250.0, 2500.0)), previous.mid),
             smooth(normalized(power(2500.0, 16000.0)), previous.high),
-            smooth(normalized(rms), previous.energy), beat, bands
+            smooth(normalized(rms), previous.energy), bands
         ).also { previous = it }
     }
 

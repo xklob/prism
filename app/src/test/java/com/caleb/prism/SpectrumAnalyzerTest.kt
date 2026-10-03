@@ -21,7 +21,6 @@ class SpectrumAnalyzerTest {
         repeat(100) {
             val levels = analyzer.analyze(ShortArray(2048))
             assertEquals(0f, levels.energy, 0f)
-            assertEquals(0f, levels.beat, 0f)
             assertTrue(levels.bands.all { it == 0f })
         }
     }
@@ -42,20 +41,19 @@ class SpectrumAnalyzerTest {
         val analyzer = SpectrumAnalyzer()
         repeat(60) { iteration ->
             val levels = analyzer.analyze(if (iteration % 2 == 0) ShortArray(2048) { Short.MAX_VALUE } else tone(8000.0, 1.0), 4f)
-            assertTrue((levels.bands.toList() + listOf(levels.bass, levels.mid, levels.high, levels.energy, levels.beat)).all { it.isFinite() && it in 0f..1f })
+            assertTrue((levels.bands.toList() + listOf(levels.bass, levels.mid, levels.high, levels.energy)).all { it.isFinite() && it in 0f..1f })
         }
     }
 
-    @Test fun transientProducesBeatAndSilenceDecays() {
+    @Test fun transientEnergyAndSilenceDecay() {
         val analyzer = SpectrumAnalyzer()
         repeat(40) { analyzer.analyze(ShortArray(2048)) }
         val impact = analyzer.analyze(tone(93.75, 0.8))
-        assertEquals(1f, impact.beat, 0f)
+        assertTrue(impact.bass > 0.5f)
         var end = impact
         repeat(100) { end = analyzer.analyze(ShortArray(2048)) }
         assertTrue(end.bass < 0.0001f)
         assertTrue(end.energy < 0.0001f)
-        assertTrue(end.beat < 0.0001f)
     }
 
     @Test(expected = IllegalArgumentException::class)
@@ -72,18 +70,17 @@ class SpectrumAnalyzerTest {
         repeat(150) { assertEquals(0f, noise.analyze(tone(1000.0, 0.001)).energy, 0f) }
     }
 
-    @Test fun successiveKicksStayDistinctAndSteadyTonesDoNotRetrigger() {
+    @Test fun successiveAmplitudePeaksStayDistinct() {
         val analyzer = SpectrumAnalyzer()
         repeat(5) {
             repeat(8) { analyzer.analyze(ShortArray(2048)) }
             val kick = analyzer.analyze(tone(93.75, 0.12))
-            assertEquals("Each kick gets its own onset", 1f, kick.beat, 0f)
             assertTrue(kick.bass > 0.5f)
             var tail = kick
             repeat(5) { tail = analyzer.analyze(ShortArray(2048)) }
             assertTrue("Release should separate beats", tail.bass < kick.bass * 0.15f)
         }
         repeat(100) { analyzer.analyze(tone(93.75, 0.12)) }
-        assertTrue(analyzer.analyze(tone(93.75, 0.12)).beat < 0.001f)
+        assertTrue(analyzer.analyze(tone(93.75, 0.12)).bass > 0.5f)
     }
 }
