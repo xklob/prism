@@ -1,0 +1,12 @@
+<resources>
+    <style name="Theme.Prism" parent="android:style/Theme.Material.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+        <item name="android:windowActionModeOverlay">true</item>
+        <item name="android:windowBackground">#080914</item>
+        <item name="android:colorAccent">#BEAEFF</item>
+        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
+    </style>
+    <color name="icon_background">#101124</color>
+</resources>
