@@ -5,7 +5,18 @@ out vec4 fragColor;
 uniform vec2 uResolution;
 uniform vec2 uTouch;
 uniform float uTime;
+uniform float uRotation;
+uniform float uColorPhase;
+uniform float uMorphTime;
 uniform float uIntensity;
+uniform float uComplexity;
+uniform float uSymmetry;
+uniform float uDistortion;
+uniform float uZoom;
+uniform float uLineWidth;
+uniform float uHue;
+uniform float uSaturation;
+uniform float uContrast;
 uniform int uMode;
 uniform int uPreviousMode;
 uniform float uTransition;
@@ -14,13 +25,13 @@ uniform vec4 uAudio;
 uniform float uBeat;
 uniform float uBands[32];
 const float PI = 3.14159265359;
+const float TAU = 6.28318530718;
 
 mat2 rotate(float a) { return mat2(cos(a), -sin(a), sin(a), cos(a)); }
 vec3 palette(float t) {
-    if (uPalette == 0) return 0.5 + 0.5 * cos(6.28318 * (t + vec3(0.0, 0.32, 0.66)));
-    vec3 a = vec3(0.48, 0.12, 0.68);
-    vec3 b = vec3(1.0, 0.22, 0.39);
-    vec3 c = vec3(1.0, 0.69, 0.22);
+    t += uHue + uColorPhase;
+    if (uPalette == 0) return 0.5 + 0.5 * cos(TAU * (t + vec3(0.0, 0.33, 0.67)));
+    vec3 a = vec3(0.48, 0.12, 0.68), b = vec3(1.0, 0.22, 0.39), c = vec3(1.0, 0.69, 0.22);
     if (uPalette == 2) { a = vec3(0.16, 0.20, 0.79); b = vec3(0.16, 0.72, 0.91); c = vec3(0.57, 1.0, 0.78); }
     if (uPalette == 3) { a = vec3(0.43, 0.12, 1.0); b = vec3(0.84, 0.17, 0.85); c = vec3(0.77, 1.0, 0.18); }
     float phase = fract(t) * 3.0;
@@ -33,103 +44,164 @@ float band(float position) {
     int low = int(floor(index));
     return mix(uBands[low], uBands[min(low + 1, 31)], fract(index));
 }
-float glow(float distance, float width) { return width / (abs(distance) + width); }
+// Pixel-width contours with a one-pixel antialiasing fringe. No glow or blur tails.
+float line(float field, float weight) {
+    float gradient = max(length(vec2(dFdx(field), dFdy(field))), 0.00001);
+    float pixels = abs(field) / gradient;
+    float halfWidth = uLineWidth * weight * max(1.0, min(uResolution.x, uResolution.y) / 720.0) * 0.5;
+    return 1.0 - smoothstep(max(0.0, halfWidth - 0.65), halfWidth + 0.65, pixels);
+}
+float periodic(float phase, float weight) { return line(sin(phase), weight); }
+vec2 fold(vec2 p, float segments) {
+    float r = length(p), wedge = TAU / segments;
+    float a = abs(mod(atan(p.y, p.x) + wedge * 0.5, wedge) - wedge * 0.5);
+    return vec2(cos(a), sin(a)) * r;
+}
 
 vec3 aurora(vec2 p, float t) {
-    vec2 q = p * 1.75;
+    vec2 q = p * 1.5;
+    float m = uMorphTime;
     for (int i = 0; i < 5; i++) {
-        float fi = float(i);
-        q += 0.36 * vec2(sin(q.y * 1.8 + t * 0.32 + fi * 1.7), cos(q.x * 1.7 - t * 0.27 + fi * 2.1));
-        q = rotate(0.34) * q;
+        float f = float(i);
+        q += uDistortion * 0.31 * vec2(sin(q.y * 1.7 + m * 0.3 + f), cos(q.x * 1.65 - m * 0.23 + f * 1.7));
+        q = rotate(0.31) * q;
     }
-    float flow = sin(q.x * 2.8 + q.y * 1.6 + t * 0.25);
-    float veins = abs(sin(q.y * 4.2 - q.x * 2.4 + t * 0.3));
-    vec3 color = palette(q.x * 0.15 + q.y * 0.12 + t * 0.024);
-    color *= 0.22 + 0.52 * pow(0.5 + 0.5 * flow, 2.0);
-    color += palette(q.y * 0.14 + 0.28 + t * 0.016) * pow(veins, 22.0) * 0.7;
-    color += vec3(0.15, 0.12, 0.27) * pow(veins, 90.0);
-    return color;
+    float frequency = 9.0 + uComplexity * 26.0;
+    float phase = q.x * frequency + sin(q.y * (1.5 + uSymmetry * 0.2)) * 2.2 - t * 0.4;
+    float crossing = q.y * frequency * 0.82 + cos(q.x * 2.1 - m * 0.2) * 2.2;
+    float ribbons = periodic(phase, 1.0);
+    float threads = periodic(crossing, 0.85);
+    float etch = periodic(phase * 2.0 + crossing * 0.3, 0.65);
+    vec3 c = palette(q.x * 0.13 + q.y * 0.10) * ribbons;
+    c += palette(q.y * 0.14 + 0.32) * threads * 0.72;
+    c += palette(q.x * 0.1 + 0.64) * etch * (0.15 + uComplexity * 0.27);
+    float cells = sin(phase) * sin(crossing);
+    c += palette(cells * 0.07 + q.y * 0.1) * step(0.88, cells) * 0.10;
+    return c;
 }
 
 vec3 kaleido(vec2 p, float t) {
-    p = rotate(t * 0.05) * p;
-    float r = length(p);
-    float angle = atan(p.y, p.x);
-    float sector = PI / 6.0;
-    angle = abs(mod(angle + sector * 0.5, sector) - sector * 0.5);
-    vec2 q = vec2(cos(angle), sin(angle)) * r;
-    vec3 color = vec3(0.0);
-    for (int i = 0; i < 5; i++) {
-        float fi = float(i);
-        vec2 z = q * (2.4 + fi * 0.9);
-        z += vec2(t * 0.1, -t * 0.08);
-        z = abs(fract(z + 0.5) - 0.5);
-        float d = length(z) - 0.23 - 0.09 * sin(r * 5.0 - t * 0.6 + fi);
-        color += palette(fi * 0.17 + r * 0.14 - t * 0.022) * pow(glow(d, 0.018), 1.8) * 0.52;
+    vec2 q = fold(p, uSymmetry);
+    float radius = length(p);
+    vec3 c = vec3(0.0);
+    int layers = 3 + int(uComplexity * 6.0);
+    float m = uMorphTime;
+    for (int i = 0; i < 9; i++) {
+        if (i >= layers) break;
+        float f = float(i);
+        q = abs(q) - vec2(0.46 + 0.05 * sin(m * 0.4 + f), 0.19 + uDistortion * 0.085);
+        q = rotate(0.52 + uDistortion * 0.34 + sin(m * 0.15) * 0.08) * q * 1.46;
+        float diamond = abs(q.x) + abs(q.y) - 0.29;
+        float circle = length(q - vec2(0.12, 0.0)) - 0.20;
+        float frame = max(abs(q.x), abs(q.y)) - 0.33;
+        float detail = line(diamond, 1.0) + line(circle, 0.75) * 0.65 + line(frame, 0.65) * 0.38;
+        c += palette(f * 0.115 + radius * 0.15) * detail * (0.67 - f * 0.035);
     }
-    return color;
+    c += palette(radius * 0.3 + 0.2) * periodic(radius * (11.0 + uComplexity * 11.0) - t * 0.12, 0.7) * 0.25;
+    return c;
 }
 
 vec3 wormhole(vec2 p, float t) {
     float r = max(length(p), 0.018);
     float a = atan(p.y, p.x);
-    float depth = -log(r) * 2.5 + t * 0.7;
-    float twist = a * 5.0 + sin(depth * 0.8 - t * 0.3) * 1.7;
-    float grid = pow(abs(sin(depth * 4.0)), 24.0);
-    float rails = pow(abs(cos(twist)), 24.0);
-    float web = pow(abs(sin(twist + depth * 2.0)), 40.0);
-    vec3 c = palette(depth * 0.08 + a / PI * 0.3 + t * 0.015);
-    c *= 0.07 + grid * 0.75 + rails * 0.5 + web * 0.2;
-    c *= smoothstep(0.02, 0.26, r);
-    c += palette(t * 0.03) * 0.025 / (r + 0.08);
-    return c;
+    float depth = -log(r) * (3.0 + uComplexity * 4.0) + t * 0.75;
+    float around = a * uSymmetry / TAU + uDistortion * (depth * 0.20 + sin(depth * 0.4 + uMorphTime * 0.2));
+    vec2 tile = vec2(around, depth);
+    vec2 cell = fract(tile) - 0.5;
+    float circuit = periodic(PI * tile.x, 1.0) + periodic(PI * tile.y, 0.85);
+    float diagonal = periodic(PI * (tile.x + tile.y), 0.65);
+    float inlay = line(max(abs(cell.x), abs(cell.y)) - 0.31, 0.8);
+    float gem = line(abs(cell.x) + abs(cell.y) - 0.20, 0.75);
+    vec3 c = palette(depth * 0.055 + a / TAU * 0.2) * circuit * 0.8;
+    c += palette(depth * 0.055 + 0.35) * (diagonal * 0.3 + inlay * 0.55 + gem * 0.65);
+    return c * smoothstep(0.022, 0.10, r);
 }
 
 vec3 pulse(vec2 p, float t) {
-    float r = length(p);
-    float a = atan(p.y, p.x) + t * 0.065;
-    float bass = uAudio.x;
-    vec3 color = vec3(0.0);
-    for (int i = 0; i < 7; i++) {
-        float fi = float(i);
-        float petals = sin(a * (6.0 + 2.0 * mod(fi, 2.0)) + fi * 0.65 + t * 0.3);
-        float radius = 0.17 + fi * 0.145 + bass * 0.17 + petals * (0.026 + uAudio.y * 0.085);
-        float d = r - radius;
-        color += palette(fi * 0.09 - t * 0.027 + bass * 0.15) * pow(glow(d, 0.009 + bass * 0.014), 1.7) * (0.5 + bass * 0.65);
+    float r = length(p), a = atan(p.y, p.x);
+    float bass = uAudio.x, mid = uAudio.y;
+    vec3 c = vec3(0.0);
+    int layers = 9 + int(uComplexity * 16.0);
+    for (int i = 0; i < 25; i++) {
+        if (i >= layers) break;
+        float f = float(i);
+        float angle = a + sin(uMorphTime * 0.22 + f * 0.14) * 0.12;
+        float petals = sin(angle * uSymmetry + f * 0.34);
+        float lace = cos(angle * uSymmetry * 2.0 - f * 0.22);
+        float radius = 0.12 + f * 0.052 + bass * 0.055 + petals * (0.02 + uDistortion * 0.058 + mid * 0.04);
+        radius += lace * (0.009 + uDistortion * 0.013);
+        c += palette(f * 0.05 + bass * 0.08) * line(r - radius, 1.0) * (0.65 + bass * 0.35);
     }
-    float sparks = pow(max(0.0, cos(a * 36.0 + t * 0.4)), 18.0);
-    color += palette(a / PI + t * 0.05) * sparks * exp(-abs(r - 0.8 - bass * 0.2) * 22.0) * uAudio.z;
-    color += palette(0.4 + t * 0.02) * 0.018 / (r + 0.055) * (0.5 + uBeat * 0.8);
-    return color;
+    float spoke = sin(a * uSymmetry * 2.0 + cos(r * 10.0 - uMorphTime * 0.2) * uDistortion);
+    c += palette(r * 0.3 + 0.4) * line(spoke, 0.75) * step(0.16, r) * step(r, 1.55) * (0.25 + uAudio.z * 0.55);
+    float seed = sin(a * uSymmetry) * 0.035 + 0.065 + uBeat * 0.02;
+    c += palette(0.1) * line(r - seed, 1.15);
+    return c;
 }
 
 vec3 strings(vec2 p, float t) {
-    vec3 color = vec3(0.0);
-    for (int i = 0; i < 18; i++) {
-        float fi = float(i) / 17.0;
-        float frequency = band(fi);
-        float y = (fi - 0.5) * 2.25;
-        y += sin(p.x * (3.0 + fi * 7.0) + t * (0.4 + fi * 0.3) + fi * 4.0) * (0.04 + frequency * 0.3 + uAudio.x * 0.07);
-        y += sin(p.x * 2.0 - t * 0.3) * 0.12;
-        float d = p.y - y;
-        vec3 c = palette(fi * 0.7 + p.x * 0.08 + t * 0.022);
-        color += c * pow(glow(d, 0.007 + frequency * 0.011), 1.8) * (0.35 + frequency * 1.5);
+    vec3 c = vec3(0.0);
+    int strands = 14 + int(uComplexity * 30.0);
+    float count = float(strands);
+    for (int i = 0; i < 44; i++) {
+        if (i >= strands) break;
+        float f = float(i) / max(count - 1.0, 1.0);
+        float frequency = band(f);
+        float y = (f - 0.5) * 3.6;
+        float wave = sin(p.x * (1.2 + uSymmetry * 0.22) + uMorphTime * 0.3 + f * TAU) * (0.12 + uDistortion * 0.26 + frequency * 0.24);
+        wave += sin(p.x * 4.3 - t * 0.23 + f * 12.0) * uDistortion * 0.065;
+        float front = line(p.y - y - wave, 0.95);
+        float back = line(p.y - y + wave + sin(p.x * 2.0 + f * 4.0) * 0.13, 0.75);
+        c += palette(f * 0.65 + p.x * 0.08) * front * (0.65 + frequency * 0.5);
+        c += palette(f * 0.65 + 0.33 - p.x * 0.06) * back * (0.35 + uAudio.y * 0.35);
     }
-    return color;
+    return c;
 }
 
 vec3 nova(vec2 p, float t) {
-    float r = length(p);
-    float a = atan(p.y, p.x);
-    float spectrum = band(abs(sin(a * 1.5 + t * 0.04)));
-    float petals = sin(a * 7.0 + sin(a * 3.0 - t * 0.2) * 1.2 + t * 0.23);
-    float shape = r - (0.5 + petals * (0.14 + uAudio.x * 0.12) + spectrum * 0.15);
-    vec3 color = palette(a / PI * 0.45 + r * 0.35 - t * 0.025) * pow(glow(shape, 0.022 + uAudio.y * 0.025), 1.6);
-    float echo = abs(sin(shape * (18.0 + uAudio.z * 10.0) - t * 0.8));
-    color += palette(r * 0.65 - t * 0.05 + 0.3) * pow(echo, 28.0) * exp(-abs(shape) * 2.3) * (0.14 + uAudio.w * 0.45);
-    float corona = pow(max(0.0, cos(a * 56.0 + sin(r * 8.0 - t))), 24.0);
-    color += palette(a / PI + t * 0.02) * corona * exp(-abs(r - 0.95) * 10.0) * (0.1 + uAudio.z);
-    return color;
+    float r = length(p), a = atan(p.y, p.x);
+    vec3 c = vec3(0.0);
+    int layers = 7 + int(uComplexity * 14.0);
+    float spectrum = band(abs(sin(a * 1.5 + uMorphTime * 0.025)));
+    for (int i = 0; i < 21; i++) {
+        if (i >= layers) break;
+        float f = float(i);
+        float angle = a + f * 0.032 + sin(uMorphTime * 0.20 + f * 0.12) * 0.10;
+        float petals = cos(angle * uSymmetry);
+        float filigree = sin(angle * (uSymmetry * 3.0) + f * 0.31);
+        float shape = (0.18 + f * 0.055) * (1.0 + petals * (0.12 + uDistortion * 0.22));
+        shape += filigree * 0.012 * (0.5 + uComplexity) + spectrum * 0.085 + uAudio.x * 0.05;
+        c += palette(f * 0.055 + a / TAU * 0.15) * line(r - shape, 1.0) * (0.62 + uAudio.w * 0.35);
+    }
+    vec2 q = fold(p, uSymmetry);
+    vec2 satellite = q - vec2(0.95 + uAudio.x * 0.12, 0.0);
+    float orbit = length(satellite);
+    c += palette(orbit * 1.7 + 0.4) * periodic(orbit * (32.0 + uComplexity * 32.0) - t * 0.1, 0.8) * step(orbit, 0.20 + uAudio.z * 0.09) * 0.65;
+    return c;
+}
+
+vec3 julia(vec2 p, float t) {
+    vec2 z = p * 1.1;
+    float shape = uDistortion / 1.5;
+    vec2 constant = mix(vec2(-0.745, 0.186), vec2(-0.40, 0.59), shape);
+    constant += vec2(sin(uMorphTime * 0.12), cos(uMorphTime * 0.1)) * 0.009;
+    float escaped = 0.0, count = 0.0, trap = 10.0;
+    int iterations = 40 + int(uComplexity * 104.0);
+    for (int i = 0; i < 144; i++) {
+        if (i >= iterations) break;
+        z = vec2(z.x * z.x - z.y * z.y, 2.0 * z.x * z.y) + constant;
+        trap = min(trap, abs(length(z) - 0.7));
+        float magnitude = dot(z, z);
+        if (magnitude > 128.0) {
+            count = float(i) + 1.0 - log2(max(0.001, log2(magnitude) * 0.5));
+            escaped = 1.0;
+            break;
+        }
+    }
+    float contours = periodic(count * 1.8, 1.0);
+    vec3 outside = palette(count * 0.026) * (0.18 + contours * 0.82);
+    vec3 inside = palette(trap * 6.0 + 0.3) * periodic(trap * 140.0, 1.0) * 0.65;
+    return mix(inside, outside, escaped);
 }
 
 vec3 scene(int mode, vec2 p, float t) {
@@ -138,18 +210,18 @@ vec3 scene(int mode, vec2 p, float t) {
     if (mode == 2) return wormhole(p, t);
     if (mode == 3) return pulse(p, t);
     if (mode == 4) return strings(p, t);
-    return nova(p, t);
+    if (mode == 5) return nova(p, t);
+    return julia(p, t);
 }
-
 void main() {
     vec2 p = (vUv * 2.0 - 1.0) * uResolution / min(uResolution.x, uResolution.y);
-    p -= uTouch * 0.22;
-    p *= 0.84;
+    p -= uTouch * 0.3;
+    p = rotate(uRotation) * p * (0.95 / uZoom);
     vec3 color = scene(uMode, p, uTime);
     if (uTransition < 1.0) color = mix(scene(uPreviousMode, p, uTime), color, smoothstep(0.0, 1.0, uTransition));
-    color *= uIntensity * 1.25;
-    color = 1.0 - exp(-color * 1.35);
-    color *= 0.64 + 0.36 * pow(max(0.0, 1.0 - length(vUv - 0.5) * 1.1), 0.7);
-    color += vec3(0.012, 0.014, 0.03);
-    fragColor = vec4(color, 1.0);
+    color = clamp(color * uIntensity * 1.22, 0.0, 1.0);
+    float luminance = dot(color, vec3(0.2126, 0.7152, 0.0722));
+    color = clamp(mix(vec3(luminance), color, uSaturation), 0.0, 1.0);
+    color = pow(color, vec3(uContrast));
+    fragColor = vec4(max(color, vec3(0.004, 0.006, 0.012)), 1.0);
 }

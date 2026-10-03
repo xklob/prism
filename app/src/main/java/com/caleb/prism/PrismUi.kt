@@ -74,7 +74,7 @@ fun PrismApp(
                         }
                     }
             )
-            AnimatedVisibility(!fullscreen, enter = fadeIn(), exit = fadeOut()) {
+            AnimatedVisibility(!fullscreen && !tuning, enter = fadeIn(), exit = fadeOut()) {
                 Box(Modifier.fillMaxSize()) {
                     Box(Modifier.fillMaxWidth().height(210.dp).background(Brush.verticalGradient(listOf(Ink.copy(alpha = 0.9f), Color.Transparent))))
                     Column(Modifier.align(Alignment.TopStart).safeDrawingPadding().padding(horizontal = 24.dp, vertical = 18.dp)) {
@@ -142,7 +142,10 @@ fun PrismApp(
                 if (hintVisible) Text("Tap anywhere to return", Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(24.dp).clip(CircleShape).background(Ink.copy(alpha = 0.7f)).padding(horizontal = 18.dp, vertical = 10.dp), color = Color.White, fontSize = 12.sp)
             }
             if (renderError != null) Text(renderError, Modifier.align(Alignment.Center).padding(30.dp).background(Panel).padding(20.dp), color = Color.White)
-            if (tuning) TuneSheet(settings, onChange) { tuning = false }
+            if (tuning) TuningOverlay(
+                settings, status, connecting, onChange, onConnect, onDisconnect,
+                fps = { surface?.engine?.measuredFps ?: 0f }, dismiss = { tuning = false }
+            )
         }
     }
 }
@@ -250,54 +253,6 @@ fun PrismApp(
         } else "Reacts to sound around you. Audio stays on your device."
         Text(helper, color = Muted, fontSize = 10.sp, lineHeight = 15.sp)
     }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable private fun TuneSheet(s: VisualSettings, change: (VisualSettings) -> Unit, dismiss: () -> Unit) {
-    ModalBottomSheet(onDismissRequest = dismiss, containerColor = Panel, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
-        Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 26.dp).padding(bottom = 32.dp)) {
-            Text("Make it yours", fontSize = 25.sp, fontWeight = FontWeight.Light)
-            Spacer(Modifier.height(6.dp))
-            Text("Color, motion, and audio response.", color = Muted, fontSize = 12.sp)
-            Spacer(Modifier.height(26.dp))
-            Text("COLOR PALETTE", color = Muted, fontSize = 10.sp, letterSpacing = 1.5.sp)
-            Spacer(Modifier.height(12.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Palette.entries.forEach { palette ->
-                    Column(Modifier.weight(1f).clip(RoundedCornerShape(13.dp)).border(1.dp, if (s.palette == palette) Lilac else Color.White.copy(alpha = 0.1f), RoundedCornerShape(13.dp))
-                        .selectable(s.palette == palette, onClick = { change(s.copy(palette = palette)) }, role = Role.RadioButton).padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Box(Modifier.fillMaxWidth().height(25.dp).clip(RoundedCornerShape(6.dp)).background(Brush.horizontalGradient(palette.colors)))
-                        Spacer(Modifier.height(8.dp))
-                        Text(palette.title, fontSize = 10.sp, color = if (s.palette == palette) Color.White else Muted)
-                    }
-                }
-            }
-            Spacer(Modifier.height(22.dp))
-            TuningSlider("Motion", s.speed, 0.15f..2f, "%.2f×".format(s.speed)) { change(s.copy(speed = it)) }
-            TuningSlider("Intensity", s.intensity, 0.2f..1.5f, "${(s.intensity * 100).toInt()}%") { change(s.copy(intensity = it)) }
-            if (s.scene.reactive) TuningSlider("Audio sensitivity", s.sensitivity, 0.4f..4f, "%.1f×".format(s.sensitivity)) { change(s.copy(sensitivity = it)) }
-            Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text("Battery saver", fontSize = 14.sp)
-                    Text("Gentler rendering at 30 fps", color = Muted, fontSize = 11.sp)
-                }
-                Switch(s.batterySaver, { change(s.copy(batterySaver = it)) }, Modifier.semantics { contentDescription = "Battery saver" })
-            }
-            Spacer(Modifier.height(18.dp))
-            Text("Everything runs locally. No accounts, uploads, or saved recordings.", color = Muted, fontSize = 11.sp, lineHeight = 17.sp)
-            Spacer(Modifier.height(20.dp))
-            Button(onClick = dismiss, modifier = Modifier.fillMaxWidth().height(48.dp), shape = RoundedCornerShape(15.dp)) { Text("Back to the light") }
-        }
-    }
-}
-
-@Composable private fun TuningSlider(label: String, value: Float, range: ClosedFloatingPointRange<Float>, formatted: String, change: (Float) -> Unit) {
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Text(label, fontSize = 13.sp, modifier = Modifier.weight(1f))
-        Text(formatted, color = Lilac, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
-    }
-    Slider(value, change, valueRange = range, modifier = Modifier.fillMaxWidth().semantics { contentDescription = label })
-    Spacer(Modifier.height(8.dp))
 }
 
 @Composable private fun SmallAction(label: String, glyph: String, onClick: () -> Unit) {

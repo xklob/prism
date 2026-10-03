@@ -77,10 +77,14 @@ class MainActivity : ComponentActivity() {
 
     private fun changeSettings(next: VisualSettings) {
         if (!next.scene.reactive || next.source != settings.source || next.paused) disconnectAudio()
-        settings = next
-        AudioEngine.sensitivity = next.sensitivity
-        store.save(next)
-        surface?.update(next)
+        val resolved = if (next.scene != settings.scene) {
+            store.save(settings)
+            store.loadScene(next.scene, next.source).copy(paused = next.paused)
+        } else next
+        settings = resolved
+        AudioEngine.sensitivity = resolved.sensitivity
+        store.save(resolved)
+        surface?.update(resolved)
         updateWakeLock()
     }
 

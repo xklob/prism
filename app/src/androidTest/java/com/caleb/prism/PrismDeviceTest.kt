@@ -5,6 +5,7 @@ import android.app.Instrumentation
 import android.content.Intent
 import android.media.*
 import android.os.SystemClock
+import android.graphics.Bitmap
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.*
@@ -28,16 +29,23 @@ class PrismDeviceTest {
     private fun launch(scene: Scene = Scene.AURORA, source: AudioSource = AudioSource.MICROPHONE) {
         context.getSharedPreferences("prism", 0).edit().clear().putInt("scene", scene.ordinal).putInt("source", source.ordinal).commit()
         device.wakeUp()
+        device.setOrientationNatural()
         activity = instrumentation.startActivitySync(Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as MainActivity
         assertTrue(device.wait(Until.hasObject(By.text("PRISM")), 10000))
         SystemClock.sleep(1500)
     }
 
     private fun click(text: String) {
+        if (android.os.Build.VERSION.SDK_INT >= 33) instrumentation.uiAutomation.clearCache()
         val target = device.wait(Until.findObject(By.text(text)), 6000)
         assertNotNull("Expected visible action: $text", target)
         target.click()
         SystemClock.sleep(500)
+        if (text == "Immerse") {
+            device.wait(Until.findObject(By.text("Got it")), 1200)?.click()
+            SystemClock.sleep(300)
+        }
+        if (android.os.Build.VERSION.SDK_INT >= 33) instrumentation.uiAutomation.clearCache()
     }
 
     private fun screenshot(name: String) {
@@ -45,6 +53,7 @@ class PrismDeviceTest {
     }
 
     @After fun cleanup() {
+        device.setOrientationNatural()
         instrumentation.runOnMainSync { activity?.finish() }
         SystemClock.sleep(400)
     }
@@ -60,9 +69,10 @@ class PrismDeviceTest {
         SystemClock.sleep(1000)
         screenshot("03-wormhole")
         click("Tune")
+        click("Color")
         click("Tidal")
         screenshot("04-tuning")
-        click("Back to the light")
+        click("Done")
         assertEquals(Palette.TIDAL, SettingsStore(context).load().palette)
         assertEquals(Scene.WORMHOLE, SettingsStore(context).load().scene)
         click("Immerse")
@@ -168,5 +178,94 @@ class PrismDeviceTest {
         assertTrue(device.wait(Until.hasObject(By.text("Connect audio")), 5000))
         assertFalse("Declining consent must not capture", AudioEngine.status.value.running)
         screenshot("12-capture-cancelled")
+    }
+
+    private fun refreshTree() {
+        if (android.os.Build.VERSION.SDK_INT >= 33) instrumentation.uiAutomation.clearCache()
+    }
+
+    private fun adjust(label: String, fraction: Float) {
+        refreshTree()
+        val slider = device.wait(Until.findObject(By.desc(label)), 5000)
+        assertNotNull("Missing slider: $label", slider)
+        val bounds = slider.visibleBounds
+        val y = bounds.centerY()
+        device.swipe(bounds.centerX(), y, bounds.left + (bounds.width() * fraction).toInt(), y, 20)
+        SystemClock.sleep(450)
+        refreshTree()
+    }
+
+    private fun difference(a: Bitmap, b: Bitmap): Double {
+        var total = 0.0
+        var samples = 0
+        // This region is above the tuning controls and below both headers.
+        for (y in (a.height * 0.29).toInt() until (a.height * 0.40).toInt() step 3) {
+            for (x in (a.width * 0.15).toInt() until (a.width * 0.85).toInt() step 3) {
+                val p = a.getPixel(x, y); val q = b.getPixel(x, y)
+                for (shift in listOf(0, 8, 16)) total += abs(((p shr shift) and 255) - ((q shr shift) and 255))
+                samples += 3
+            }
+        }
+        return total / samples / 255.0
+    }
+
+    @Test fun e_transparentOverlayAndLiveGeometry() {
+        launch(Scene.KALEIDO)
+        device.findObject(By.desc("Pause")).click()
+        SystemClock.sleep(600)
+        refreshTree()
+        assertTrue(device.hasObject(By.text("PAUSED")))
+        val original = requireNotNull(instrumentation.uiAutomation.takeScreenshot())
+        click("Tune")
+        SystemClock.sleep(500)
+        val overlay = requireNotNull(instrumentation.uiAutomation.takeScreenshot())
+        val overlayDifference = difference(original, overlay)
+        assertTrue("Transparent controls must not dim, resize, or reframe the visual: $overlayDifference", overlayDifference < 0.005)
+        screenshot("13-transparent-overlay")
+        adjust("Recursion depth", 0.14f)
+        val changed = requireNotNull(instrumentation.uiAutomation.takeScreenshot())
+        val changeDifference = difference(overlay, changed)
+        assertTrue("Geometry changes must reach the visible shader while tuning: $changeDifference", changeDifference > 0.015)
+        val configured = SettingsStore(context).load()
+        assertTrue(configured.complexity < 0.3f)
+        click("Save")
+        adjust("Recursion depth", 0.94f)
+        assertTrue(SettingsStore(context).load().complexity > 0.8f)
+        click("Recall")
+        assertEquals(configured.complexity, SettingsStore(context).load().complexity, 0.01f)
+        click("Hide")
+        assertTrue(device.wait(Until.hasObject(By.text("Show controls")), 5000))
+        screenshot("14-overlay-hidden")
+        click("Show controls")
+        click("Color")
+        click("Tidal")
+        adjust("Hue shift", 0.7f)
+        screenshot("15-color-overlay")
+        val configuredHue = SettingsStore(context).load().hue
+        click("Done")
+        click("Aurora")
+        click("Kaleido")
+        assertEquals("Every scene keeps its own tuning", configured.complexity, SettingsStore(context).load().complexity, 0.01f)
+        assertEquals(configuredHue, SettingsStore(context).load().hue, 0.01f)
+        File(evidence, "overlay-validation.txt").writeText("overlay_pixel_difference=$overlayDifference\nlive_geometry_pixel_difference=$changeDifference\nper_scene_tuning=true\nsave_recall=true\n")
+        original.recycle(); overlay.recycle(); changed.recycle()
+    }
+
+    @Test fun f_juliaFractalAndLandscapeOverlay() {
+        launch(Scene.JULIA)
+        click("Immerse")
+        SystemClock.sleep(3000)
+        screenshot("16-julia-fractal")
+        device.click(device.displayWidth / 2, device.displayHeight / 2)
+        SystemClock.sleep(800)
+        refreshTree()
+        click("Tune")
+        assertTrue(device.hasObject(By.desc("Fractal iterations")))
+        device.setOrientationLeft()
+        SystemClock.sleep(1200)
+        screenshot("17-landscape-overlay")
+        refreshTree()
+        assertTrue(device.hasObject(By.text("Done")))
+        device.setOrientationNatural()
     }
 }
