@@ -22,7 +22,8 @@ data class RhythmState(
     val lastMatchedBeatTime: Double = lastBeatTime,
     val phaseConfidence: Float = confidence,
     val coasting: Boolean = false,
-    val conflict: RhythmConflict = RhythmConflict.NONE
+    val conflict: RhythmConflict = RhythmConflict.NONE,
+    val tempoAssisted: Boolean = false
 ) {
     val locked: Boolean get() = bpm > 0f && confidence >= 0.5f
     fun positionAt(time: Double) = position + (time-timestamp).coerceIn(-0.5,0.5)*bpm/60.0
@@ -33,6 +34,14 @@ data class RhythmState(
  * Both strategies require fresh on-grid observations and independent repeated bar evidence.
  */
 class RhythmTracker(usePeriodicity: Boolean=false) {
+    private var tempoHint: TempoHint? = null
+    fun setTempoHint(hint: TempoHint?) { tempoHint = hint; periodicity?.tempoHint = hint }
+    fun discontinuity() {
+        if (manualTempo || manualBar) return
+        events.clear(); barEvidence.clear(); periodicity?.reset(); lastPeriodicEstimate = null
+        fitted = false; confidence = 0.0; phaseConfidence = 0.0; barConfidence = 0.0; barLocked = false
+        lastMatchedBeat = Double.NEGATIVE_INFINITY; lastFit = Double.NEGATIVE_INFINITY; clearBarWindow()
+    }
     private data class Event(val time: Double, val beat: Double, val downbeat: Double) {
         val weight: Double get() = beat+downbeat
     }
@@ -148,6 +157,7 @@ class RhythmTracker(usePeriodicity: Boolean=false) {
         val span=now-events.first().time
         if (span < 2.0) return
         var bestScore=-1.0; var bestBpm=120.0; var bestAngle=0.0; var bestCoherence=0.0
+        var bestAudioScore=-1.0
         val scores=mutableListOf<Pair<Double,Double>>()
         val downbeats=events.filter { it.downbeat > 0.20 && it.downbeat/it.weight > 0.55 }
         for (candidate in 120..400) {
@@ -174,10 +184,11 @@ class RhythmTracker(usePeriodicity: Boolean=false) {
             }
             val score=coherence*(0.60+0.40*coverage)+continuity+barCoherence*0.32
             scores.add(bpm to score)
-            if (score > bestScore) { bestScore=score; bestBpm=bpm; bestAngle=atan2(imaginary,real); bestCoherence=coherence }
+            val assistedScore=score+(tempoHint?.weight(bpm) ?: 0.0)
+            if (assistedScore > bestScore) { bestScore=assistedScore; bestAudioScore=score; bestBpm=bpm; bestAngle=atan2(imaginary,real); bestCoherence=coherence }
         }
         val competitor=scores.filter { abs(ln(it.first/bestBpm)) > 0.09 }.maxOfOrNull { it.second } ?: 0.0
-        val separation=((bestScore-competitor)/0.15).coerceIn(0.0,1.0)
+        val separation=((bestAudioScore-competitor)/0.15).coerceIn(0.0,1.0)
         val support=((events.size-3)/5.0).coerceIn(0.0,1.0)*min(1.0,span/3.0)
         // Bar bonuses and continuity choose a hypothesis; neither is evidence of beat accuracy.
         val candidateConfidence=((bestCoherence-0.35)/0.65).coerceIn(0.0,1.0)*support*(0.85+0.15*separation)
@@ -345,6 +356,7 @@ class RhythmTracker(usePeriodicity: Boolean=false) {
             beatsPerBar=meter, barOffset=barOffset, barLocked=validBar && present,
             manualTempo=manualTempo, manualBar=manualBar, signalPresent=present,
             lastBeatTime=lastBeat, beatProbability=beat, downbeatProbability=downbeat,
-            lastMatchedBeatTime=lastMatchedBeat, phaseConfidence=phaseConfidence.toFloat(), coasting=coasting)
+            lastMatchedBeatTime=lastMatchedBeat, phaseConfidence=phaseConfidence.toFloat(), coasting=coasting,
+            tempoAssisted=!manualTempo && fitted && tempoHint?.agrees(60/period) == true)
     }
 }

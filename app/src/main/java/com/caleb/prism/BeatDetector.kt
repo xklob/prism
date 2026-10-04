@@ -51,6 +51,8 @@ class RhythmAnalyzer(context: Context, private val trace: ((Double,FloatArray,Fl
     private val recovery=RhythmRecovery()
     val tracker: RhythmTracker get() = if (recovery.usingRecovery) recoveryTrackers[recoverySelector.selected] else trackers[selector.selected]
     fun automaticTiming() { (trackers+recoveryTrackers).forEach { it.automatic() } }
+    fun setTempoHint(hint: TempoHint?) { (trackers+recoveryTrackers).forEach { it.setTempoHint(hint) } }
+    fun discontinuity() { (trackers+recoveryTrackers).forEach { it.discontinuity() } }
     private val rolling=FloatArray(2293)
     private val hop=FloatArray(441)
     private var filled=0

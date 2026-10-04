@@ -32,6 +32,7 @@ class MainActivity : ComponentActivity() {
     private var surface: PrismSurface? = null
     private var resumeMicrophone = false
     private lateinit var recording: SessionRecorder
+    private lateinit var songAssistant: SongAssistant
     private var foreground = false
     private var unlockedOrientation: Int? = null
 
@@ -71,6 +72,7 @@ class MainActivity : ComponentActivity() {
             navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT)
         )
         store = SettingsStore(this)
+        songAssistant = SongAssistant(this)
         recording = SessionRecorder(this) {
             if (!isDestroyed) {
                 unlockedOrientation?.let { requestedOrientation = it }
@@ -110,7 +112,7 @@ class MainActivity : ComponentActivity() {
                 recording = recording,
                 onRecord = ::startRecording,
                 onOpenRecording = { openRecording(it, false) },
-                onShareRecording = { openRecording(it, true) }
+                onShareRecording = { openRecording(it, true) }, songAssistant = songAssistant
             )
         }
     }
@@ -244,6 +246,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        songAssistant.close()
         recording.stop()
         if (isFinishing) disconnectAudio()
         surface = null

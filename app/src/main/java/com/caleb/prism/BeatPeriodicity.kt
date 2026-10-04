@@ -4,6 +4,7 @@ import kotlin.math.*
 
 /** Repetition in the complete activation envelope survives echoes and flutter within one beat. */
 class BeatPeriodicity {
+    var tempoHint: TempoHint? = null
     data class Estimate(val bpm: Double, val origin: Double, val confidence: Double)
     private data class Frame(val time: Double,val value: Double)
     private val frames=ArrayDeque<Frame>()
@@ -58,15 +59,16 @@ class BeatPeriodicity {
             }
             return if (weight>0) total/weight else -1.0
         }
-        var bpm=120.0; var quality=-1.0
+        var bpm=120.0; var quality=-1.0; var bestScore=-1.0
         for (candidate in 120..400) {
             val rate=candidate/2.0
             val c=score(rate)
-            if (c>quality) { quality=c; bpm=rate }
+            val assisted=c+(tempoHint?.weight(rate) ?: 0.0)
+            if (assisted>bestScore) { bestScore=assisted; quality=c; bpm=rate }
         }
         // When alternate beats have different timbres, every second beat correlates best.
         // Keep the intervening pulse if it is almost as repeatable, rather than halving tempo.
-        if (bpm*2<=200 && score(bpm*2)>=max(.45,quality*.85)) { bpm*=2; quality=score(bpm) }
+        if (bpm*2<=200 && tempoHint?.agrees(bpm) != true && score(bpm*2)>=max(.45,quality*.85)) { bpm*=2; quality=score(bpm) }
         if (quality<.43 || span*bpm/60<5-1e-6) return null
         var competitor=-1.0
         for (candidate in 120..400) {

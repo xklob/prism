@@ -50,10 +50,12 @@ fun PrismApp(
     createSurface: () -> PrismSurface, onChange: (VisualSettings) -> Unit,
     onConnect: () -> Unit, onDisconnect: () -> Unit, onImmersive: (Boolean) -> Unit,
     recording: SessionRecorder, onRecord: (AudioSource) -> Unit,
-    onOpenRecording: (SavedRecording) -> Unit, onShareRecording: (SavedRecording) -> Unit
+    onOpenRecording: (SavedRecording) -> Unit, onShareRecording: (SavedRecording) -> Unit,
+    songAssistant: SongAssistant
 ) {
     var fullscreen by rememberSaveable { mutableStateOf(false) }
     var tuning by rememberSaveable { mutableStateOf(false) }
+    var tuningTab by rememberSaveable { mutableStateOf("Geometry") }
     var surface by remember { mutableStateOf<PrismSurface?>(null) }
     val status by AudioEngine.status.collectAsStateWithLifecycle()
     val recordingState by recording.state.collectAsStateWithLifecycle()
@@ -101,6 +103,9 @@ fun PrismApp(
                         Column(Modifier.navigationBarsPadding().verticalScroll(rememberScrollState()).padding(bottom = 16.dp)) {
                             if (settings.audioEnabled) {
                                 AudioPanel(settings.source, status, connecting, { onChange(settings.copy(source = it)) }, onConnect, onDisconnect, recordingState.busy)
+                                Box(Modifier.padding(horizontal = 24.dp)) {
+                                    SongMonitor(songAssistant) { tuningTab = "Song"; tuning = true }
+                                }
                                 Spacer(Modifier.height(20.dp))
                             }
                             Row(Modifier.padding(horizontal = 24.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -120,7 +125,7 @@ fun PrismApp(
                             Spacer(Modifier.height(20.dp))
                             Row(Modifier.fillMaxWidth().padding(horizontal = 24.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                                 SmallAction(if (settings.paused) "Play" else "Pause", if (settings.paused) "play" else "pause") { onChange(settings.copy(paused = !settings.paused)) }
-                                OutlinedButton(onClick = { tuning = true }, modifier = Modifier.weight(1f).height(48.dp), shape = RoundedCornerShape(16.dp), border = BorderStroke(1.dp, Color.White.copy(alpha = 0.18f)), contentPadding = PaddingValues(horizontal = 14.dp)) {
+                                OutlinedButton(onClick = { tuningTab = "Geometry"; tuning = true }, modifier = Modifier.weight(1f).height(48.dp), shape = RoundedCornerShape(16.dp), border = BorderStroke(1.dp, Color.White.copy(alpha = 0.18f)), contentPadding = PaddingValues(horizontal = 14.dp)) {
                                     Glyph("tune", Modifier.size(18.dp), Color.White)
                                     Spacer(Modifier.width(9.dp))
                                     Text("Tune", color = Color.White, fontSize = 13.sp)
@@ -147,7 +152,8 @@ fun PrismApp(
             if (renderError != null) Text(renderError, Modifier.align(Alignment.Center).padding(30.dp).background(Panel).padding(20.dp), color = Color.White)
             if (tuning) TuningOverlay(
                 settings, status, connecting, onChange, onConnect, onDisconnect,
-                fps = { surface?.engine?.measuredFps ?: 0f }, dismiss = { tuning = false }, captureLocked = recordingState.busy
+                fps = { surface?.engine?.measuredFps ?: 0f }, dismiss = { tuning = false }, captureLocked = recordingState.busy,
+                songAssistant = songAssistant, initialTab = tuningTab
             )
             if (recordingState.busy) RecordingBadge(recordingState, { recording.stop() },
                 Modifier.align(Alignment.TopStart).safeDrawingPadding().padding(start = 20.dp, top = if (fullscreen) 8.dp else 70.dp))
@@ -256,7 +262,7 @@ fun PrismApp(
         val helper = status.message ?: if (status.running && rhythm.signalPresent && !feedback.barReady) feedback.help else if (source == AudioSource.SYSTEM) {
             if (status.running && silentSeconds >= 5) "Play music in another app. If it stays quiet, that app may block capture; try the microphone."
             else "Follows phone playback, even with headphones. Some apps block capture."
-        } else "Reacts to sound around you. Audio stays on your device."
+        } else "Reacts to sound around you. Online song identification is optional."
         Text(helper, color = Muted, fontSize = 10.sp, lineHeight = 15.sp)
     }
 }

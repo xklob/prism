@@ -9,6 +9,7 @@ import androidx.core.content.ContextCompat
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import java.util.concurrent.ConcurrentLinkedQueue
+import java.util.concurrent.CopyOnWriteArrayList
 import android.util.Log
 import kotlin.concurrent.thread
 
@@ -34,12 +35,21 @@ object AudioEngine {
     fun automaticTiming() { commands.add(TimingCommand(2,System.nanoTime()/1e9)) }
     fun halfTempo() { commands.add(TimingCommand(3,System.nanoTime()/1e9)) }
     fun doubleTempo() { commands.add(TimingCommand(4,System.nanoTime()/1e9)) }
+    fun alignPhrase() { commands.add(TimingCommand(5,System.nanoTime()/1e9)) }
+    fun automaticPhrase() { commands.add(TimingCommand(6,System.nanoTime()/1e9)) }
+    @Volatile var tempoHint: TempoHint? = null
+    @Volatile var songTimingRevision = 0
+    @Volatile var phraseBars = 16
+    @Volatile var phrase = PhraseState(); private set
     @Volatile private var generation = 0
     private var recorder: AudioRecord? = null
     private var worker: Thread? = null
     private const val SAMPLE_RATE = 48000
     private const val BLOCK = 960
-    @Volatile var pcmSink: PcmSink? = null
+    private val pcmSinks = CopyOnWriteArrayList<PcmSink>()
+    fun addPcmSink(sink: PcmSink) { pcmSinks.addIfAbsent(sink) }
+    fun removePcmSink(sink: PcmSink) { pcmSinks.remove(sink) }
+    internal val pcmSinkCount get() = pcmSinks.size
 
     fun report(message: String) { mutableStatus.value = CaptureStatus(message = message) }
 
@@ -110,6 +120,8 @@ object AudioEngine {
                 var audioOrigin=Double.NaN
                 var samplesRead=0L
                 val captureTimestamp=AudioTimestamp()
+                val phraseTracker = PhraseTracker()
+                var timingRevision = songTimingRevision
                 try {
                     val timing=RhythmAnalyzer(context.applicationContext).also { rhythmAnalyzer=it }
                     if (generation != session) return@thread
@@ -127,18 +139,25 @@ object AudioEngine {
                                 audioOrigin=captureTimestamp.nanoTime/1e9-captureTimestamp.framePosition.toDouble()/SAMPLE_RATE
                             }
                             val firstSampleTime = audioOrigin + samplesRead.toDouble() / SAMPLE_RATE
-                            if (generation == session) pcmSink?.accept(captured, (firstSampleTime * 1e9).toLong())
+                            if (generation == session) pcmSinks.forEach { it.accept(captured, (firstSampleTime * 1e9).toLong()) }
                             if (channels == 1) captured.copyInto(samples) else for (i in samples.indices) {
                                 samples[i] = ((captured[i * 2].toInt() + captured[i * 2 + 1].toInt()) / 2).toShort()
                             }
+                            if (timingRevision != songTimingRevision) {
+                                timingRevision = songTimingRevision; phraseTracker.reset(); timing.discontinuity()
+                            }
+                            timing.setTempoHint(tempoHint)
+                            var phraseAlignment: Double? = null
                             while (true) {
                                 val command=commands.poll() ?: break
                                 when (command.action) {
                                     0 -> timing.tracker.tap(command.time)
                                     1 -> timing.tracker.alignBar(command.time)
-                                    2 -> timing.automaticTiming()
+                                    2 -> { timing.automaticTiming(); phraseTracker.reset() }
                                     3 -> timing.tracker.scaleTempo(0.5,command.time)
                                     4 -> timing.tracker.scaleTempo(2.0,command.time)
+                                    5 -> { timing.tracker.alignBar(command.time); phraseAlignment = command.time }
+                                    6 -> phraseTracker.reset()
                                 }
                             }
                             timing.process(samples,firstSampleTime,sensitivity,beatsPerBar) {
@@ -149,6 +168,11 @@ object AudioEngine {
                             samples.copyInto(spectrumWindow,spectrumWindow.size-BLOCK)
                             val next = analyzer.analyze(spectrumWindow, sensitivity)
                             if (generation == session) levels = next
+                            if (generation == session) {
+                                // Update first so any grid discontinuity clears the old anchor before manual alignment.
+                                phrase = phraseTracker.update(rhythm, next, phraseBars)
+                                phraseAlignment?.let { phraseTracker.align(rhythm, it); phrase = phraseTracker.update(rhythm, next, phraseBars) }
+                            }
                             if (generation == session) inferenceMs=timing.inferenceMs
                             offset = 0
                         }
@@ -163,6 +187,7 @@ object AudioEngine {
                     if (generation == session) {
                         levels = AudioLevels()
                         rhythm = RhythmState()
+                        phrase = PhraseState(bars = phraseBars)
                         if (mutableStatus.value.running) mutableStatus.value = CaptureStatus()
                     }
                 }
@@ -182,6 +207,7 @@ object AudioEngine {
         worker = null
         levels = AudioLevels()
         rhythm = RhythmState()
+        phrase = PhraseState(bars = phraseBars)
         inferenceMs = 0f
         commands.clear()
         mutableStatus.value = CaptureStatus()

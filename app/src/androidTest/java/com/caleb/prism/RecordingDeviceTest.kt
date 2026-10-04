@@ -90,6 +90,9 @@ class RecordingDeviceTest {
                 .setAllowedCapturePolicy(AudioAttributes.ALLOW_CAPTURE_BY_ALL).build())
             .setAudioFormat(AudioFormat.Builder().setSampleRate(48000).setChannelMask(AudioFormat.CHANNEL_OUT_STEREO).setEncoding(AudioFormat.ENCODING_PCM_16BIT).build())
             .setTransferMode(AudioTrack.MODE_STATIC).setBufferSizeInBytes(samples.size * 2).build()
+        val recognition = RecognitionBuffer()
+        val observer = PcmSink { pcm, time -> recognition.append(pcm, time, AudioEngine.status.value.channels) }
+        AudioEngine.addPcmSink(observer)
         try {
             assertEquals(samples.size, playback.write(samples, 0, samples.size))
             assertEquals(AudioTrack.SUCCESS, playback.setLoopPoints(0, samples.size / 2, -1))
@@ -124,13 +127,16 @@ class RecordingDeviceTest {
             device.wait(Until.findObject(By.text("Got it")), 700)?.click()
             assertTrue("Stop remains available in immersive mode", device.hasObject(By.text("Stop recording")))
             SystemClock.sleep(1500)
+            assertNotNull("Recognition must receive a complete recent clip while stereo video is encoding", recognition.clip(System.nanoTime()))
+            AudioEngine.removePcmSink(observer)
             click("Stop recording")
             val uri = awaitSaved()
             verify(uri, 2, "system-session.mp4")
             verifyStereoTones(File(evidence, "system-session.mp4"))
             assertFalse("Recording-only capture is released", AudioEngine.status.value.running)
-            assertNull(AudioEngine.pcmSink)
+            assertEquals("Only the song input observer remains", 1, AudioEngine.pcmSinkCount)
         } finally {
+            AudioEngine.removePcmSink(observer)
             playback.release()
             manager.setStreamVolume(AudioManager.STREAM_MUSIC, oldVolume, 0)
         }
@@ -164,7 +170,7 @@ class RecordingDeviceTest {
         assertTrue(device.wait(Until.hasObject(By.text("Record session")), 5000))
         SystemClock.sleep(500)
         assertFalse(AudioEngine.status.value.running)
-        assertNull(AudioEngine.pcmSink)
+        assertEquals("Only the song input observer remains", 1, AudioEngine.pcmSinkCount)
         assertNull(context.getSharedPreferences("recordings", 0).getString("uri", null))
         start(AudioSource.MICROPHONE)
         SystemClock.sleep(1000)
@@ -189,7 +195,7 @@ class RecordingDeviceTest {
         click("Stop recording")
         verify(awaitSaved(), 1, "reactive-session.mp4")
         assertTrue("Reactivity keeps its shared capture after saving", AudioEngine.status.value.running)
-        assertNull(AudioEngine.pcmSink)
+        assertEquals("Only the song input observer remains", 1, AudioEngine.pcmSinkCount)
         click("Stop")
         assertFalse(AudioEngine.status.value.running)
         device.findObject(By.desc("Pause"))!!.click()
@@ -205,7 +211,7 @@ class RecordingDeviceTest {
         context.startService(Intent(context, PlaybackCaptureService::class.java).setAction("STOP"))
         verify(awaitSaved(), 2, "interrupted-session.mp4")
         assertFalse(AudioEngine.status.value.running)
-        assertNull(AudioEngine.pcmSink)
+        assertEquals("Only the song input observer remains", 1, AudioEngine.pcmSinkCount)
         assertTrue(device.wait(Until.hasObject(By.text("Record session")), 5000))
     }
 

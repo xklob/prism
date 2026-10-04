@@ -64,6 +64,10 @@ private val MonitorText=TextStyle(color=Color.White,shadow=Shadow(Color.Black,Of
             ConfidenceMeter("Bar",feedback.barConfidence,feedback.barReady,timing.manualBar && feedback.barReady,Modifier.weight(1f))
         }
         if (details) Text(feedback.help,style=MonitorText,color=MonitorMuted,fontSize=10.sp,lineHeight=14.sp)
+        if (running) {
+            if (timing.tempoAssisted) Text("Tempo assisted by song lookup · phase follows audio", style=MonitorText, color=MonitorMuted, fontSize=10.sp)
+            PhraseMonitor(AudioEngine.phrase)
+        }
     }
 }
 

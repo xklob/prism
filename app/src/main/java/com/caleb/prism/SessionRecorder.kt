@@ -47,7 +47,7 @@ class SessionRecorder(context: Context, private val onFinished: () -> Unit) {
             ready = { ready -> main.post {
                 if (state.value.phase == RecordingPhase.SAVING) ready.finish(stopTime)
                 else if (state.value.phase == RecordingPhase.PREPARING) {
-                    AudioEngine.pcmSink = ready
+                    AudioEngine.addPcmSink(ready)
                     view.beginRecording(ready) { main.post {
                         if (encoder === ready && state.value.phase == RecordingPhase.PREPARING) {
                             mutableState.value = state.value.copy(phase = RecordingPhase.RECORDING, startedNs = ready.originNs)
@@ -57,7 +57,7 @@ class SessionRecorder(context: Context, private val onFinished: () -> Unit) {
             } },
             failed = { message -> main.post { stop(message) } },
             completed = { saved, error -> main.post {
-                if (AudioEngine.pcmSink === encoder) AudioEngine.pcmSink = null
+                encoder?.let(AudioEngine::removePcmSink)
                 encoder = null; surface = null
                 if (saved != null) prefs.edit().putString("uri", saved.uri.toString()).putString("name", saved.name).apply()
                 mutableState.value = state.value.copy(phase = RecordingPhase.IDLE,
@@ -78,7 +78,7 @@ class SessionRecorder(context: Context, private val onFinished: () -> Unit) {
         }
         stopTime = System.nanoTime()
         mutableState.value = state.value.copy(phase = RecordingPhase.SAVING, message = message)
-        if (AudioEngine.pcmSink === encoder) AudioEngine.pcmSink = null
+        encoder?.let(AudioEngine::removePcmSink)
         // queueEvent is processed before GLSurfaceView acknowledges onPause.
         val active = encoder
         val time = stopTime
