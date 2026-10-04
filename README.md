@@ -15,7 +15,7 @@ Every pattern works independently of audio. **React to audio** is optional and r
 
 ## Use
 
-1. Install the APK in `dist/` on an Android device.
+1. [Download the APK from GitHub Releases](https://github.com/xklob/prism/releases/latest) and install it on an Android device.
 2. Select a pattern.
 3. To follow music, enable **React to audio**, choose **Microphone** or **System audio**, then **Connect audio**. Leave the switch off for ambient animation.
 4. Open **Tune** for transparent controls over the full-size visual. Nothing is dimmed or reframed. While dragging a slider, other controls fade away. **Hide** removes the controls until **Show controls** is tapped; **Done** returns to the scene browser.
