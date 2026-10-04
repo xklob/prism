@@ -63,7 +63,12 @@ class RecordingDeviceTest {
             assertNotNull("Playback capture must ask for Android consent", consent)
             consent.click()
         }
-        assertTrue("Recorder must start", device.wait(Until.hasObject(By.text("Stop recording")), 12000))
+        val started = device.wait(Until.hasObject(By.text("Stop recording")), 12000)
+        if (!started) {
+            device.takeScreenshot(File(evidence, "recording-start-failure.png"))
+            device.dumpWindowHierarchy(File(evidence, "recording-start-failure.xml"))
+        }
+        assertTrue("Recorder must start", started)
     }
 
     private fun awaitSaved(previous: String? = null): Uri {
@@ -125,7 +130,10 @@ class RecordingDeviceTest {
             click("Done")
             click("Immerse")
             device.wait(Until.findObject(By.text("Got it")), 700)?.click()
-            assertTrue("Stop remains available in immersive mode", device.hasObject(By.text("Stop recording")))
+            if (android.os.Build.VERSION.SDK_INT >= 33) instrumentation.uiAutomation.clearCache()
+            val stopVisible = device.wait(Until.hasObject(By.text("Stop recording")), 4000)
+            if (!stopVisible) device.takeScreenshot(File(evidence, "recording-immersive-failure.png"))
+            assertTrue("Stop remains available in immersive mode", stopVisible)
             SystemClock.sleep(1500)
             assertNotNull("Recognition must receive a complete recent clip while stereo video is encoding", recognition.clip(System.nanoTime()))
             AudioEngine.removePcmSink(observer)
