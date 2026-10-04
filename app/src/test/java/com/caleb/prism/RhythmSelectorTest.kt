@@ -4,6 +4,28 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class RhythmSelectorTest {
+    @Test fun equallyStrongDetectorsMustAdmitTempoOrBarDisagreement() {
+        val a=RhythmState(bpm=120f,confidence=.9f,barConfidence=.9f,barLocked=true,signalPresent=true)
+        for ((b,expected) in listOf(a.copy(bpm=160f) to RhythmConflict.TEMPO,
+            a.copy(position=.4) to RhythmConflict.TEMPO,a.copy(barOffset=1) to RhythmConflict.BAR,
+            a.copy(beatsPerBar=3) to RhythmConflict.BAR)) {
+            val selector=RhythmSelector()
+            assertEquals(RhythmConflict.NONE,selector.choose(listOf(a,b),0.0).conflict)
+            val result=selector.choose(listOf(a,b),1.0)
+            assertEquals(expected,result.conflict)
+            assertFalse("Conflicting bar predictions cannot strobe",result.barLocked)
+            assertEquals(expected != RhythmConflict.TEMPO,result.locked)
+            assertEquals(RhythmConflict.NONE,selector.choose(listOf(a,a),1.1).conflict)
+            val manual=a.copy(manualBar=true)
+            assertEquals(manual,selector.choose(listOf(manual,b),2.0))
+        }
+        val selector=RhythmSelector()
+        // A different beat index can still identify exactly the same physical bar start.
+        val sameBar=a.copy(position=9.0,barOffset=1)
+        selector.choose(listOf(a,sameBar),0.0)
+        assertEquals(RhythmConflict.NONE,selector.choose(listOf(a,sameBar),1.0).conflict)
+    }
+
     @Test fun sustainedEvidenceCanReplaceWeakTimingWithoutFlappingOrOverridingManualAlignment() {
         val selector = RhythmSelector()
         val weak = RhythmState(bpm=120f, confidence=0.35f)

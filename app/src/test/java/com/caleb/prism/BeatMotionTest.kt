@@ -42,4 +42,70 @@ class BeatMotionTest {
         assertTrue(motion.update(late,loud,10.05,settings).beat<.75f)
         assertEquals(1f,motion.update(late,loud,10.05,settings.copy(syncOffsetMs=-50f)).beat,.001f)
     }
+
+    private fun at(time: Double, meter: Int=4) = timing.copy(timestamp=time,position=(time-10)*2,beatsPerBar=meter)
+
+    @Test fun eachBarGetsOneQuickFlashAndFullInversionThatFadesBack() {
+        for (meter in listOf(3,4)) for (fps in listOf(30,60,120)) {
+            val motion=BeatMotion()
+            var flashes=0
+            var previous=0f
+            for (frame in 0..(fps*8)) {
+                val time=10.1+frame.toDouble()/fps
+                val sample=motion.update(at(time,meter),loud,time,settings)
+                if (sample.flash > previous+.1f) { flashes++; assertEquals(1f,sample.inversion,.001f) }
+                previous=sample.flash
+            }
+            assertEquals("One flash per bar at $fps fps, meter $meter",if (meter==4) 4 else 5,flashes)
+        }
+        val motion=BeatMotion()
+        motion.update(at(11.99),loud,11.99,settings)
+        val first=motion.update(at(12.0),loud,12.0,settings)
+        assertEquals(.85f,first.flash,.001f)
+        assertEquals(1f,first.inversion,.001f)
+        val middle=motion.update(at(12.09),loud,12.09,settings)
+        assertEquals(0f,middle.flash,0f)
+        assertEquals(.5f,middle.inversion,.001f)
+        val end=motion.update(at(12.18),loud,12.18,settings)
+        assertEquals(0f,end.inversion,.001f)
+    }
+
+    @Test fun confidenceLossAndTimingJumpsCannotProduceFalseFlashes() {
+        for (uncertain in listOf(at(11.99).copy(barLocked=false),at(11.99).copy(confidence=.3f),
+            at(11.99).copy(coasting=true),at(11.99).copy(conflict=RhythmConflict.BAR),at(11.99).copy(signalPresent=false))) {
+            val motion=BeatMotion()
+            motion.update(uncertain,loud,11.99,settings)
+            assertEquals("Acquiring lock is not a downbeat",0f,motion.update(at(12.0),loud,12.0,settings).flash,0f)
+        }
+        val motion=BeatMotion()
+        motion.update(at(11.7),loud,11.7,settings)
+        assertEquals("Phase jump is not a downbeat",0f,motion.update(at(12.0).copy(timestamp=11.71),loud,11.71,settings).flash,0f)
+        motion.update(at(13.9),loud,13.9,settings)
+        assertEquals("Meter/bar corrections are not downbeats",0f,motion.update(at(14.0).copy(barOffset=1),loud,14.0,settings).flash,0f)
+    }
+
+    @Test fun phaseJitterDoesNotStrobeTwiceAndPauseClearsTheFlash() {
+        val motion=BeatMotion()
+        motion.update(at(11.99),loud,11.99,settings)
+        assertTrue(motion.update(at(12.0),loud,12.0,settings).flash>0f)
+        motion.update(at(12.01).copy(position=3.99),loud,12.01,settings)
+        val second=motion.update(at(12.02),loud,12.02,settings)
+        assertTrue("Second crossing must not restart flash",second.flash<.5f)
+        motion.update(at(12.03).copy(barLocked=false),loud,12.03,settings)
+        motion.update(at(12.04).copy(position=3.99),loud,12.04,settings)
+        assertEquals("Brief confidence loss must not allow a second flash",0f,motion.update(at(12.05),loud,12.05,settings).flash,0f)
+        val paused=motion.update(at(12.02),loud,12.02,settings.copy(paused=true))
+        assertEquals(0f,paused.flash,0f); assertEquals(0f,paused.inversion,0f)
+        assertEquals(0f,motion.update(at(12.03),loud,12.03,settings).flash,0f)
+    }
+
+    @Test fun flashAndInversionCanBeAdjustedIndependently() {
+        val motion=BeatMotion()
+        val s=settings.copy(downbeatFlash=0f,downbeatInvert=.6f,invertFadeMs=300f)
+        motion.update(at(11.99),loud,11.99,s)
+        val first=motion.update(at(12.0),loud,12.0,s)
+        assertEquals(0f,first.flash,0f); assertEquals(.6f,first.inversion,.001f)
+        assertEquals(.3f,motion.update(at(12.15),loud,12.15,s).inversion,.001f)
+        assertEquals(MusicalMotion(),motion.update(at(12.16),loud,12.16,s.copy(audioEnabled=false)))
+    }
 }

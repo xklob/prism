@@ -28,9 +28,16 @@ class ReleaseRhythmSmokeTest {
         val app="com.caleb.prism"
         fun click(text: String) {
             instrumentation.uiAutomation.clearCache()
-            val target=device.wait(Until.findObject(By.text(text)),5000)
+            var target=device.findObject(By.text(text))
+            for (attempt in 0 until 7) {
+                if (target != null && target.visibleBounds.height() >= 20) break
+                device.findObject(By.scrollable(true))?.scroll(Direction.DOWN,.45f)
+                SystemClock.sleep(200)
+                instrumentation.uiAutomation.clearCache()
+                target=device.findObject(By.text(text))
+            }
             assertNotNull("Visible release action: $text",target)
-            assertTrue("Enabled release action: $text",target.isEnabled)
+            assertTrue("Enabled release action: $text",requireNotNull(target).isEnabled)
             target.click()
             SystemClock.sleep(300)
         }
@@ -46,6 +53,8 @@ class ReleaseRhythmSmokeTest {
             return requireNotNull(control).isChecked
         }
         fun waitText(pattern: String): UiObject2 {
+            device.findObject(By.scrollable(true))?.fling(Direction.UP)
+            SystemClock.sleep(300)
             val end=SystemClock.elapsedRealtime()+30000
             while (SystemClock.elapsedRealtime()<end) {
                 instrumentation.uiAutomation.clearCache()

@@ -55,6 +55,7 @@ fun TuningOverlay(
     var measuredFps by remember { mutableFloatStateOf(0f) }
     var timing by remember { mutableStateOf(RhythmState()) }
     var timingNow by remember { mutableDoubleStateOf(0.0) }
+    var inputEnergy by remember { mutableFloatStateOf(0f) }
     val context = LocalContext.current
     val store = remember(context) { SettingsStore(context) }
     var saved by remember(s.scene) { mutableStateOf(store.hasSavedLook(s.scene)) }
@@ -62,9 +63,10 @@ fun TuningOverlay(
     LaunchedEffect(notice) { if (notice.isNotEmpty()) { delay(2200); notice = "" } }
     LaunchedEffect(Unit) { while (true) { measuredFps = fps(); delay(1000) } }
     LaunchedEffect(status.running, tab, hidden) {
-        if (!status.running) timing = RhythmState()
+        if (!status.running) { timing = RhythmState(); inputEnergy = 0f }
         while (status.running && tab == "Audio" && !hidden) {
             timing = AudioEngine.rhythm
+            inputEnergy = AudioEngine.levels.energy
             timingNow = System.nanoTime()/1e9
             delay(50)
         }
@@ -168,11 +170,7 @@ fun TuningOverlay(
                                     }
                                 }
                                 Column(Modifier.alpha(otherAlpha)) {
-                                    RhythmReadout(status.running, timing, timingNow)
-                                    Text(if (!s.audioEnabled) "Enable audio to make this pattern follow sound."
-                                        else if (!status.running) "Choose an input, then Connect to find beats and bars."
-                                        else "Beats pulse · Bars reshape · Motion follows tempo", style = ReadableText, fontSize = 10.sp,
-                                        modifier = Modifier.padding(vertical = 6.dp))
+                                    RhythmMonitor(status.running, timing, timingNow, inputEnergy)
                                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                         TextButton(onClick = AudioEngine::tapTempo, enabled = status.running, contentPadding = PaddingValues(4.dp)) {
                                             Text("Tap tempo", style = ReadableText, fontSize = 11.sp)
@@ -206,6 +204,9 @@ fun TuningOverlay(
                                 slider("Reaction strength", s.audioAmount, 0f..2.5f, "${(s.audioAmount * 100).roundToInt()}%") { change(s.copy(audioAmount = it)) }
                                 slider("Beat pulse", s.beatImpact, 0f..2f, "${(s.beatImpact * 100).roundToInt()}%") { change(s.copy(beatImpact = it)) }
                                 slider("Bar accent", s.barImpact, 0f..2f, "${(s.barImpact * 100).roundToInt()}%") { change(s.copy(barImpact = it)) }
+                                slider("Downbeat flash", s.downbeatFlash, 0f..1f, "${(s.downbeatFlash * 100).roundToInt()}%") { change(s.copy(downbeatFlash = it)) }
+                                slider("Color inversion", s.downbeatInvert, 0f..1f, "${(s.downbeatInvert * 100).roundToInt()}%") { change(s.copy(downbeatInvert = it)) }
+                                slider("Invert fade", s.invertFadeMs, 60f..400f, "${s.invertFadeMs.roundToInt()} ms") { change(s.copy(invertFadeMs = it)) }
                                 slider("Musical motion", s.flowImpact, 0f..2f, "${(s.flowImpact * 100).roundToInt()}%") { change(s.copy(flowImpact = it)) }
                                 slider("Pulse length", s.pulseLength, 0.08f..0.8f, "%.2f beats".format(s.pulseLength)) { change(s.copy(pulseLength = it)) }
                                 slider("Sync offset", s.syncOffsetMs, -250f..250f, "%+.0f ms".format(s.syncOffsetMs)) { change(s.copy(syncOffsetMs = it)) }
@@ -223,31 +224,6 @@ fun TuningOverlay(
                 }
             }
         }
-    }
-}
-
-@Composable private fun RhythmReadout(running: Boolean, timing: RhythmState, now: Double) {
-    Column(Modifier.fillMaxWidth().padding(vertical = 5.dp)) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text(if (timing.bpm > 0f) "%.1f BPM".format(timing.bpm) else "··· BPM", style = ReadableText,
-                fontSize = 20.sp, fontFamily = FontFamily.Monospace, modifier = Modifier.weight(1f))
-            val active=if (timing.locked) timing.beatInBar(now) else 0
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.semantics {
-                contentDescription = if (timing.barLocked) "Beat $active of ${timing.beatsPerBar}" else "Bar not locked"
-            }) {
-                for (beat in 1..timing.beatsPerBar) {
-                    Box(Modifier.size(25.dp).border(1.dp, if (timing.barLocked && beat == 1) OverlayAccent else Color.White.copy(alpha = 0.5f), CircleShape)
-                        .background(if (beat == active) OverlayAccent else Color.Transparent, CircleShape),contentAlignment = Alignment.Center) {
-                        Text(if (timing.barLocked) "$beat" else "·", color = if (beat == active) OverlayInk else Color.White, fontSize = 11.sp)
-                    }
-                }
-            }
-        }
-        val beatStatus=if (!running) "Disconnected" else if (!timing.signalPresent) "Waiting for sound" else if (timing.manualTempo) "Manual tempo"
-            else if (timing.locked) "Beat locked" else "Finding beat"
-        val barStatus=if (timing.manualBar) "Bar aligned" else if (timing.barLocked) "Bar locked · ${timing.beatsPerBar} beats" else "Finding bar"
-        Text(if (running) "$beatStatus · $barStatus" else beatStatus, style = ReadableText, color = OverlayAccent, fontSize = 10.sp,
-            modifier = Modifier.padding(top = 4.dp))
     }
 }
 

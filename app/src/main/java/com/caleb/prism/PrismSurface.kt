@@ -87,6 +87,7 @@ class PrismRenderer(private val context: Context, private val onError: (String) 
             for (name in listOf("uResolution", "uTouch", "uTime", "uRotation", "uColorPhase", "uMorphTime", "uIntensity", "uComplexity", "uSymmetry", "uDistortion", "uZoom", "uLineWidth", "uHue", "uSaturation", "uContrast", "uMode", "uPreviousMode", "uTransition", "uPalette", "uRhythm")) {
                 uniforms[name] = glGetUniformLocation(program, name)
             }
+            uniforms["uDownbeat"]=glGetUniformLocation(program,"uDownbeat")
             val vertices = ByteBuffer.allocateDirect(32).order(ByteOrder.nativeOrder()).asFloatBuffer()
                 .put(floatArrayOf(-1f, -1f, 1f, -1f, -1f, 1f, 1f, 1f)).apply { position(0) }
             val array = IntArray(1); glGenVertexArrays(1, array, 0); glBindVertexArray(array[0])
@@ -152,6 +153,7 @@ class PrismRenderer(private val context: Context, private val onError: (String) 
             glUniform1f(uniforms.getValue("uTransition"), transition)
             glUniform1i(uniforms.getValue("uPalette"), s.palette.ordinal)
             glUniform4f(uniforms.getValue("uRhythm"), motion.beat, motion.bar, motion.flow, motion.texture)
+            glUniform2f(uniforms.getValue("uDownbeat"), motion.flash, motion.inversion)
             glDrawArrays(GL_TRIANGLE_STRIP, 0, 4)
         } else { glClearColor(0.03f, 0.03f, 0.08f, 1f); glClear(GL_COLOR_BUFFER_BIT) }
         if (statsStart == 0L) statsStart = started

@@ -69,6 +69,7 @@ class ShaderProbe(context: Context, private val evidence: File) : AutoCloseable 
         f("uHue", s.hue); f("uSaturation", s.saturation); f("uContrast", s.contrast)
         i("uMode", scene.id); i("uPreviousMode", scene.id); f("uTransition", 1f); i("uPalette", s.palette.ordinal)
         glUniform4f(glGetUniformLocation(program, "uRhythm"), audio.beat, audio.bar, audio.flow, audio.texture)
+        glUniform2f(glGetUniformLocation(program, "uDownbeat"), audio.flash, audio.inversion)
         glDrawArrays(GL_TRIANGLE_STRIP, 0, 4)
         val buffer = ByteBuffer.allocateDirect(width * height * 4)
         glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, buffer)
@@ -94,16 +95,34 @@ class ShaderProbe(context: Context, private val evidence: File) : AutoCloseable 
         assertTrue("${scene.title} / $label must affect substantial geometry: $fraction", fraction > 0.15)
         val off = BeatMotion().update(RhythmState(),AudioLevels(),10.0,VisualSettings(audioEnabled=false))
         assertArrayEquals("Audio off must exactly restore the ambient render", ambient, render(scene, off))
-        fun save(bytes: ByteArray, name: String) {
-            val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-            for (y in 0 until height) for (x in 0 until width) {
-                val n = ((height - 1 - y) * width + x) * 4
-                bitmap.setPixel(x, y, android.graphics.Color.rgb(bytes[n].toInt() and 255, bytes[n+1].toInt() and 255, bytes[n+2].toInt() and 255))
-            }
-            File(evidence, name).outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
-            bitmap.recycle()
-        }
         if (label == "captured") { save(ambient, "${scene.name}-ambient.png"); save(active, "${scene.name}-audio.png") }
+    }
+
+    fun verifyDownbeatColors(scene: Scene) {
+        val ambient=render(scene,MusicalMotion())
+        val inverted=render(scene,MusicalMotion(inversion=1f))
+        val fading=render(scene,MusicalMotion(inversion=.5f))
+        val flash=render(scene,MusicalMotion(inversion=1f,flash=1f))
+        for (pixel in 0 until width*height) for (channel in 0..2) {
+            val n=pixel*4+channel
+            assertEquals("Every color channel must invert",(255-(ambient[n].toInt() and 255)).toDouble(),(inverted[n].toInt() and 255).toDouble(),1.0)
+            assertEquals("Halfway fade must blend original and inverted colors",127.5,(fading[n].toInt() and 255).toDouble(),1.0)
+            assertEquals("Strobe covers the entire visual",255,flash[n].toInt() and 255)
+        }
+        assertArrayEquals("Finished fade restores original colors exactly",ambient,render(scene,MusicalMotion()))
+        save(inverted,"${scene.name}-inverted.png")
+        save(flash,"${scene.name}-flash.png")
+        File(evidence,"shader-response.txt").appendText("${scene.name} flash=white inversion=exact fade=verified\n")
+    }
+
+    private fun save(bytes: ByteArray, name: String) {
+        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        for (y in 0 until height) for (x in 0 until width) {
+            val n = ((height - 1 - y) * width + x) * 4
+            bitmap.setPixel(x, y, android.graphics.Color.rgb(bytes[n].toInt() and 255, bytes[n+1].toInt() and 255, bytes[n+2].toInt() and 255))
+        }
+        File(evidence, name).outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        bitmap.recycle()
     }
 
     override fun close() {

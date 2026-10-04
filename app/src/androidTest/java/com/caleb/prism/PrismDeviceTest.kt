@@ -145,6 +145,20 @@ class PrismDeviceTest {
                 File(evidence,"capture-phase.txt").writeText("phase_error_ms=${phaseError*1000}\nsong_time=$songTime\n")
                 assertTrue("Captured beat phase must stay within 100 ms of playback: $phaseError",phaseError<.100)
             }
+            val downbeatMotion=BeatMotion()
+            val observedFlashes=mutableListOf<Double>()
+            val flashWindow=SystemClock.elapsedRealtime()+5000
+            var priorFlash=0f
+            while (SystemClock.elapsedRealtime()<flashWindow) {
+                val now=System.nanoTime()/1e9
+                val motion=downbeatMotion.update(AudioEngine.rhythm,AudioEngine.levels,now,VisualSettings(audioEnabled=true))
+                if (motion.flash > priorFlash+.1f) observedFlashes.add(now)
+                priorFlash=motion.flash
+                SystemClock.sleep(16)
+            }
+            assertTrue("Captured music must produce bar flashes",observedFlashes.size>=2)
+            for ((a,b) in observedFlashes.zipWithNext()) assertEquals("One flash each 4-beat bar",4*60.0/128,b-a,.12)
+            File(evidence,"captured-downbeats.txt").writeText(observedFlashes.joinToString("\n"))
             ShaderProbe(context, evidence).use { probe ->
                 val firstBeat=rhythm.copy(position=rhythm.barOffset.toDouble())
                 val motion=BeatMotion().update(firstBeat,levels,firstBeat.timestamp,VisualSettings(audioEnabled=true))
@@ -161,6 +175,9 @@ class PrismDeviceTest {
             click("Tune")
             click("Audio")
             screenshot("09-audio-overlay-live")
+            assertTrue(device.hasObject(By.text("Sound received")))
+            assertTrue(device.hasObject(By.descStartsWith("Beat confidence")))
+            assertTrue(device.hasObject(By.descStartsWith("Bar confidence")))
             adjust("Reaction strength", 0.8f)
             assertTrue(SettingsStore(context).load().audioAmount > 1.7f)
             click("Done")
@@ -317,6 +334,7 @@ class PrismDeviceTest {
 
     @Test fun g_everyPatternHasBeatAndBarAccentsAndOffIsExact() {
         ShaderProbe(context, evidence).use { probe ->
+            for (scene in Scene.entries) probe.verifyDownbeatColors(scene)
             for ((label,motion) in listOf("beat" to MusicalMotion(beat=1f), "bar" to MusicalMotion(bar=1f), "flow" to MusicalMotion(flow=0.8f))) {
                 for (scene in Scene.entries) probe.verifyResponse(scene, motion, label)
             }
@@ -335,13 +353,18 @@ class PrismDeviceTest {
             assertFalse(store.load().audioEnabled)
         }
         for (scene in Scene.entries) {
-            val settings = VisualSettings.defaults(scene).copy(audioEnabled = true, audioAmount = 1.7f, source = AudioSource.SYSTEM)
+            val settings = VisualSettings.defaults(scene).copy(audioEnabled = true, audioAmount = 1.7f, source = AudioSource.SYSTEM,
+                downbeatFlash=.35f,downbeatInvert=.65f,invertFadeMs=260f)
             store.save(settings)
             assertEquals(settings, store.load())
             store.saveLook(settings)
             store.save(settings.copy(audioEnabled = false))
             assertFalse("Recalling a look cannot enable capture", store.loadLook(scene, AudioSource.SYSTEM).audioEnabled)
-            assertEquals(1.7f, store.loadLook(scene, AudioSource.SYSTEM).audioAmount, 0f)
+            val recalled=store.loadLook(scene, AudioSource.SYSTEM)
+            assertEquals(1.7f, recalled.audioAmount, 0f)
+            assertEquals(.35f,recalled.downbeatFlash,0f)
+            assertEquals(.65f,recalled.downbeatInvert,0f)
+            assertEquals(260f,recalled.invertFadeMs,0f)
         }
     }
 

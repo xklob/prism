@@ -59,6 +59,9 @@ data class VisualSettings(
     val flowImpact: Float = 0.5f,
     val pulseLength: Float = 0.28f,
     val textureAmount: Float = 0f,
+    val downbeatFlash: Float = 0.85f,
+    val downbeatInvert: Float = 1f,
+    val invertFadeMs: Float = 180f,
     val beatsPerBar: Int = 0,
     val syncOffsetMs: Float = 0f
 ) {
@@ -121,6 +124,9 @@ class SettingsStore(context: Context) {
             morph = f("morph", d.morph, 0f, 1.5f), beatImpact = f("beatImpact", d.beatImpact, 0f, 2f),
             barImpact = f("barImpact", d.barImpact, 0f, 2f), flowImpact = f("flowImpact", d.flowImpact, 0f, 2f),
             pulseLength = f("pulseLength", d.pulseLength, 0.08f, 0.8f), textureAmount = f("textureAmount", d.textureAmount, 0f, 1f),
+            downbeatFlash = f("downbeatFlash", d.downbeatFlash, 0f, 1f),
+            downbeatInvert = f("downbeatInvert", d.downbeatInvert, 0f, 1f),
+            invertFadeMs = f("invertFadeMs", d.invertFadeMs, 60f, 400f),
             beatsPerBar = prefs.getInt("beatsPerBar", 0).takeIf { it in listOf(0,3,4) } ?: 0,
             syncOffsetMs = prefs.getFloat("syncOffsetMs", 0f).let { if (it.isFinite()) it.coerceIn(-250f,250f) else 0f }
         )
@@ -136,6 +142,7 @@ class SettingsStore(context: Context) {
             "colorSpeed" to s.colorSpeed, "rotation" to s.rotation, "morph" to s.morph,
             "beatImpact" to s.beatImpact, "barImpact" to s.barImpact, "flowImpact" to s.flowImpact,
             "pulseLength" to s.pulseLength, "textureAmount" to s.textureAmount,
+            "downbeatFlash" to s.downbeatFlash, "downbeatInvert" to s.downbeatInvert, "invertFadeMs" to s.invertFadeMs,
             "audioAmount" to s.audioAmount
         )) editor.putFloat(prefix + key, value)
         if (shared) editor.putInt("scene", s.scene.id).putString("sceneName", s.scene.name)

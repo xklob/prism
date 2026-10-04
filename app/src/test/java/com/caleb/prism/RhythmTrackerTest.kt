@@ -71,6 +71,74 @@ class RhythmTrackerTest {
         assertEquals(140f,next.bpm,1.5f)
     }
 
+    @Test fun gapsCoastThenLoseConfidenceEvenWhileInputRemainsAudible() {
+        val tracker=RhythmTracker()
+        assertTrue(feed(tracker,120.0,4).barLocked)
+        val shortlyAfter=tracker.observe(24.02,0f,0f,true)
+        assertTrue(shortlyAfter.locked)
+        var state=shortlyAfter
+        for (frame in 2..60) state=tracker.observe(24+frame*.02,0f,0f,true)
+        assertTrue(state.signalPresent)
+        assertTrue(state.coasting)
+        assertFalse("Coasting is not evidence for a new downbeat",state.barLocked)
+        for (frame in 61..400) state=tracker.observe(24+frame*.02,0f,0f,true)
+        assertTrue(state.confidence<.05f && state.barConfidence<.05f)
+        assertTrue(feed(tracker,120.0,4,start=32.02).barLocked)
+    }
+
+    @Test fun weakOffbeatFlourishesDoNotStealAnEstablishedGrid() {
+        val tracker=RhythmTracker()
+        feed(tracker,128.0,4)
+        var state=RhythmState()
+        for (frame in 1..800) {
+            val time=24+frame*.02
+            val position=(time-.3)*128/60
+            val index=round(position).toInt()
+            val distance=abs(position-index)*60/128
+            val strong=.92*exp(-distance*distance/.0008)
+            val ghostDistance=abs(position-.5-round(position-.5))*60/128
+            val weak=.3*exp(-ghostDistance*ghostDistance/.0004)
+            val down=if (Math.floorMod(index,4)==0) strong*.95 else strong*.02
+            state=tracker.observe(time,(strong-down+weak).toFloat(),down.toFloat(),true)
+        }
+        assertTrue(state.locked && state.barLocked)
+        assertEquals(128f,state.bpm,1f)
+        val expected=(state.timestamp-.3)*128/60
+        assertTrue(abs(state.position-expected-round(state.position-expected))*60/128<.04)
+    }
+
+    @Test fun weakPeriodicEvidenceDoesNotMasqueradeAsHighConfidence() {
+        val tracker=RhythmTracker()
+        var state=RhythmState()
+        for (frame in 0..1000) {
+            val time=frame*.02
+            val position=(time-.3)*2
+            val distance=abs(position-round(position))*.5
+            state=tracker.observe(time,(.15*exp(-distance*distance/.0008)).toFloat(),0f,true)
+        }
+        assertEquals(120f,state.bpm,1f)
+        assertTrue("Very weak model predictions are tentative: $state",state.confidence<.65f)
+        assertFalse(state.barLocked)
+    }
+
+    @Test fun reacquiresAQuieterBeatAfterItsPhaseChangesWithoutChangingTempo() {
+        val tracker=RhythmTracker()
+        feed(tracker,120.0,4)
+        var state=RhythmState()
+        for (frame in 1..500) {
+            val time=24+frame*.02
+            val position=(time-.55)*2 // Same tempo, shifted half a beat, with weaker predictions.
+            val distance=abs(position-round(position))*.5
+            val probability=.3*exp(-distance*distance/.0008)
+            val down=if (Math.floorMod(round(position).toInt(),4)==0) probability*.95 else probability*.02
+            state=tracker.observe(time,(probability-down).toFloat(),down.toFloat(),true)
+        }
+        assertTrue("Old confidence must not reject a changed rhythm forever: $state",state.locked)
+        assertEquals(120f,state.bpm,1.5f)
+        val expected=(state.timestamp-.55)*2
+        assertTrue("Must follow the new phase",abs(state.position-expected-round(state.position-expected))*.5<.06)
+    }
+
     @Test fun learnedProbabilitiesTrackMusicalFixtures() {
         for ((name,bpm,meter) in listOf(Triple("drums128",128f,4),Triple("drums174",174f,4),Triple("waltz96",96f,3))) {
             val tracker=RhythmTracker()

@@ -23,6 +23,7 @@ uniform float uTransition;
 uniform int uPalette;
 // Beat pulse, bar accent, musical flow, optional treble texture.
 uniform vec4 uRhythm;
+uniform vec2 uDownbeat; // Brief white flash and fading RGB inversion on beat 1.
 const float PI = 3.14159265359;
 const float TAU = 6.28318530718;
 
@@ -155,5 +156,8 @@ void main() {
     float luminance = dot(color, vec3(0.2126, 0.7152, 0.0722));
     color = clamp(mix(vec3(luminance), color, uSaturation), 0.0, 1.0);
     color = pow(color, vec3(uContrast));
-    fragColor = vec4(max(color, vec3(0.004, 0.006, 0.012)), 1.0);
+    color = max(color, vec3(0.004, 0.006, 0.012));
+    color = mix(color, vec3(1.0) - color, uDownbeat.y);
+    color = mix(color, vec3(1.0), uDownbeat.x);
+    fragColor = vec4(color, 1.0);
 }

@@ -82,7 +82,7 @@ fun PrismApp(
                             Spacer(Modifier.width(10.dp))
                             Text("PRISM", color = Color.White, fontSize = 19.sp, letterSpacing = 5.sp, fontWeight = FontWeight.SemiBold)
                             Spacer(Modifier.weight(1f))
-                            StatusPill(if (settings.paused) "PAUSED" else if (!settings.audioEnabled) "AMBIENT" else if (status.running) "AUDIO LIVE" else "AUDIO READY", if (status.running) Mint else Lilac)
+                            StatusPill(if (settings.paused) "PAUSED" else if (!settings.audioEnabled) "AMBIENT" else if (status.running) "AUDIO ON" else "AUDIO READY", if (status.running) Mint else Lilac)
                         }
                         if (!landscape) {
                             Spacer(Modifier.height(34.dp))
@@ -207,12 +207,14 @@ fun PrismApp(
 @Composable private fun AudioPanel(source: AudioSource, status: CaptureStatus, connecting: Boolean, onSource: (AudioSource) -> Unit, onConnect: () -> Unit, onDisconnect: () -> Unit) {
     var energy by remember { mutableFloatStateOf(0f) }
     var rhythm by remember { mutableStateOf(RhythmState()) }
+    var timingNow by remember { mutableDoubleStateOf(0.0) }
     var silentSeconds by remember { mutableIntStateOf(0) }
     LaunchedEffect(status.running) {
         var quietTicks = 0
         while (status.running) {
             energy = AudioEngine.levels.energy
             rhythm = AudioEngine.rhythm
+            timingNow = System.nanoTime()/1e9
             quietTicks = if (energy < 0.015f) quietTicks + 1 else 0
             silentSeconds = quietTicks / 10
             delay(100)
@@ -232,22 +234,14 @@ fun PrismApp(
         }
         Spacer(Modifier.height(10.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Canvas(Modifier.size(34.dp, 22.dp).semantics { contentDescription = "Audio level ${(energy * 100).toInt()} percent" }) {
-                for (i in 0..6) {
-                    val h = size.height * (0.15f + energy * (0.4f + 0.45f * abs(sin(i * 1.7f))))
-                    drawLine(if (status.running) Mint else Muted.copy(alpha = 0.5f), Offset(i * size.width / 7, (size.height - h) / 2), Offset(i * size.width / 7, (size.height + h) / 2), strokeWidth = 2.dp.toPx(), cap = StrokeCap.Round)
-                }
-            }
-            Spacer(Modifier.width(10.dp))
-            val timingLabel = if (!status.running) "Ready when you are" else if (silentSeconds >= 5) "Waiting for sound"
-                else if (rhythm.locked && rhythm.barLocked) "${rhythm.bpm.roundToInt()} BPM · ${rhythm.beatInBar(System.nanoTime()/1e9)}/${rhythm.beatsPerBar}"
-                else if (rhythm.locked) "${rhythm.bpm.roundToInt()} BPM · Finding bar" else "Finding beat"
-            Text(timingLabel, color = if (status.running) Mint else Muted, fontSize = 11.sp, modifier = Modifier.weight(1f))
+            Text(if (source == AudioSource.SYSTEM) "Phone playback" else "Microphone input", color = Muted, fontSize = 11.sp, modifier = Modifier.weight(1f))
             TextButton(onClick = if (status.running) onDisconnect else onConnect, enabled = !connecting, contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)) {
                 Text(if (connecting) "Connecting…" else if (status.running) "Stop" else "Connect audio", fontSize = 11.sp)
             }
         }
-        val helper = status.message ?: if (source == AudioSource.SYSTEM) {
+        RhythmMonitor(status.running, rhythm, timingNow, energy, details = false)
+        val feedback = RhythmFeedback.from(status.running, rhythm, timingNow)
+        val helper = status.message ?: if (status.running && rhythm.signalPresent && !feedback.barReady) feedback.help else if (source == AudioSource.SYSTEM) {
             if (status.running && silentSeconds >= 5) "Play music in another app. If it stays quiet, that app may block capture; try the microphone."
             else "Follows phone playback, even with headphones. Some apps block capture."
         } else "Reacts to sound around you. Audio stays on your device."
