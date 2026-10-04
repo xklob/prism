@@ -29,13 +29,17 @@ data class RhythmState(
     fun beatInBar(time: Double): Int = Math.floorMod(floor(positionAt(time)+1e-7).toInt()-barOffset, beatsPerBar)+1
 }
 
-/** Causal tempo/phase estimation from learned beat probabilities, with independent bar hypotheses. */
-class RhythmTracker {
+/** Causal tempo/phase estimation, using either isolated onsets or complete repeating envelopes.
+ * Both strategies require fresh on-grid observations and independent repeated bar evidence.
+ */
+class RhythmTracker(usePeriodicity: Boolean=false) {
     private data class Event(val time: Double, val beat: Double, val downbeat: Double) {
         val weight: Double get() = beat+downbeat
     }
     private data class BarEvidence(val index: Int, val probability: Double, val weight: Double)
     private val events=ArrayDeque<Event>()
+    private val periodicity=if (usePeriodicity) BeatPeriodicity() else null
+    private var lastPeriodicEstimate: BeatPeriodicity.Estimate?=null
     private val barEvidence=linkedMapOf<Int,BarEvidence>()
     private val taps=ArrayDeque<Double>()
     private var prior=Event(0.0,0.0,0.0)
@@ -58,6 +62,14 @@ class RhythmTracker {
     private var manualTempo=false
     private var manualBar=false
     private var forcedMeter=0
+    private var barWindowIndex=Int.MIN_VALUE
+    private var barWindowDown=0.0
+    private var barWindowTotal=0.0
+    private var barWindowPeak=0.0
+
+    private fun clearBarWindow() {
+        barWindowIndex=Int.MIN_VALUE; barWindowDown=0.0; barWindowTotal=0.0; barWindowPeak=0.0
+    }
 
     fun setMeter(beats: Int) {
         require(beats in listOf(0,3,4))
@@ -65,6 +77,7 @@ class RhythmTracker {
         forcedMeter=beats
         if (beats != 0) meter=beats
         barEvidence.clear(); barLocked=false; manualBar=false; barConfidence=0.0
+        clearBarWindow()
     }
 
     fun observe(time: Double, beat: Float, downbeat: Float, audible: Boolean): RhythmState {
@@ -73,15 +86,25 @@ class RhythmTracker {
         lastTime=time
         if (audible) lastAudible=time
         val current=Event(time, beat.toDouble().coerceIn(0.0,1.0), downbeat.toDouble().coerceIn(0.0,1.0))
+        periodicity?.observe(time,current.weight)
+        if (periodicity != null) updatePeriodicClock(time)
         if (prior.weight >= 0.10 && prior.weight > beforePrior && prior.weight >= current.weight &&
-            prior.time-lastBeat > 0.20 && time-lastAudible < 0.25) {
-            accept(prior)
+            prior.time-lastBeat > 0.20+1e-6 && time-lastAudible < 0.25) {
+            if (periodicity == null) accept(prior) else lastBeat=prior.time
+        }
+        if (fitted && periodicity != null) {
+            val position=(prior.time-origin)/period
+            if (prior.weight>=.25 && prior.weight>beforePrior && prior.weight>=current.weight &&
+                abs(position-round(position))<.18) lastMatchedBeat=prior.time
+            collectBarFrame(current)
         }
         beforePrior=prior.weight; prior=current
-        if (time-lastAudible > 1.5 && events.isNotEmpty()) {
+        if (time-lastAudible > 1.5 && (events.isNotEmpty() || periodicity != null && fitted)) {
             events.clear(); barEvidence.clear(); confidence=0.0; barConfidence=0.0
             if (!manualTempo) fitted=false
             if (!manualBar) barLocked=false
+            periodicity?.reset()
+            clearBarWindow()
         }
         return state(time, beat, downbeat)
     }
@@ -99,8 +122,10 @@ class RhythmTracker {
             while (events.isNotEmpty() && events.first().time <= lastMatchedBeat) events.removeFirst()
             fitted=false; confidence=0.0; phaseConfidence=0.0; lastFit=Double.NEGATIVE_INFINITY
             barEvidence.clear(); barLocked=false; barConfidence=0.0
+            periodicity?.reset()
+            clearBarWindow()
         }
-        if (!manualTempo && event.time-lastFit > 0.30 && events.size >= 5) {
+        if (!manualTempo && event.time-lastFit >= 0.30-1e-6 && events.size >= 5) {
             fit(event.time); lastFit=event.time
         }
         if (fitted) {
@@ -161,6 +186,7 @@ class RhythmTracker {
         if (!fitted || abs(ln(newPeriod/period)) > 0.18 && candidateConfidence > 0.75) {
             period=newPeriod; origin=now+bestAngle/(2*PI)*period; fitted=true
             barEvidence.clear(); if (!manualBar) barLocked=false
+            clearBarWindow()
         } else {
             val position=(now-origin)/period
             period+=(newPeriod-period)*0.25
@@ -183,6 +209,32 @@ class RhythmTracker {
         phaseConfidence=(matched/max(total,1e-8)).coerceIn(0.0,1.0)
         val strengthSupport=((strength/max(total,1e-8)-0.08)/0.5).coerceIn(0.0,1.0)
         confidence=candidateConfidence*sqrt(phaseConfidence)*(0.55+0.45*strengthSupport)
+    }
+
+    private fun updatePeriodicClock(time: Double) {
+        if (manualTempo) return
+        val estimate=periodicity?.estimate
+        if (estimate === lastPeriodicEstimate) return
+        lastPeriodicEstimate=estimate
+        if (estimate == null) { confidence=0.0; return }
+        val targetPeriod=60/estimate.bpm
+        if (!fitted) {
+            period=targetPeriod; origin=estimate.origin; fitted=true
+            barEvidence.clear(); clearBarWindow()
+            if (!manualBar) { barLocked=false; barConfidence=0.0 }
+        } else {
+            val position=(time-origin)/period
+            if (abs(ln(targetPeriod/period))>.10 && !manualBar) {
+                barEvidence.clear(); clearBarWindow(); barLocked=false; barConfidence=0.0
+            }
+            period+=(targetPeriod-period)*.35
+            val target=(time-estimate.origin)/targetPeriod
+            val error=target-position-round(target-position)
+            origin=time-(position+error*.45)*period
+        }
+        val error=(time-origin)/period-(time-estimate.origin)/targetPeriod
+        phaseConfidence=exp(-.5*((error-round(error))/.20).pow(2))
+        confidence=estimate.confidence*phaseConfidence
     }
 
     private fun estimateBar(index: Int) {
@@ -211,6 +263,35 @@ class RhythmTracker {
         else if (certainty < 0.38 || winner.meter != meter || winner.offset != barOffset) barLocked=false
     }
 
+    private fun collectBarFrame(frame: Event) {
+        if (manualBar || confidence<.5) { clearBarWindow(); return }
+        val position=(frame.time-origin)/period
+        val index=round(position).toInt()
+        val phase=position-index
+        if (index != barWindowIndex && barWindowIndex != Int.MIN_VALUE) finishBarWindow()
+        if (index in barEvidence) return
+        if (abs(phase)<=.18) {
+            if (barWindowIndex != index) { clearBarWindow(); barWindowIndex=index }
+            val weight=exp(-.5*(phase/.12).pow(2))
+            barWindowDown+=frame.downbeat*weight; barWindowTotal+=frame.weight*weight
+            barWindowPeak=max(barWindowPeak,frame.weight)
+            lastBarEvidence=frame.time
+        } else if (phase>.18 && barWindowIndex == index) finishBarWindow()
+    }
+
+    private fun finishBarWindow() {
+        val index=barWindowIndex
+        if (barWindowTotal>0.05 && barWindowPeak>=.1) {
+            // Integrate one observation per predicted beat rather than letting an echo or flutter
+            // choose which individual frame supplies the bar label.
+            val evidence=BarEvidence(index,(barWindowDown/barWindowTotal).coerceIn(.025,.975),barWindowPeak.coerceAtMost(1.0))
+            barEvidence[index]=evidence
+            barEvidence.keys.removeAll { index-it>=32 || it>index+1 }
+            estimateBar(index)
+        }
+        clearBarWindow()
+    }
+
     fun tap(time: Double) {
         if (taps.isNotEmpty() && time-taps.last() > 2.0) taps.clear()
         if (taps.isNotEmpty() && time-taps.last() < 0.20) return
@@ -221,6 +302,7 @@ class RhythmTracker {
             period=gaps[gaps.size/2].coerceIn(0.25,1.5)
             origin=time; fitted=true; manualTempo=true; confidence=1.0
             barEvidence.clear(); manualBar=false; barLocked=false; barConfidence=0.0
+            clearBarWindow()
         }
     }
 
@@ -229,6 +311,7 @@ class RhythmTracker {
         val index=round((time-origin)/period).toInt()
         origin=time-index*period
         barOffset=Math.floorMod(index,meter); manualBar=true; barLocked=true; barConfidence=1.0
+        clearBarWindow()
     }
 
     fun scaleTempo(factor: Double, time: Double) {
@@ -237,11 +320,14 @@ class RhythmTracker {
         require(time.isFinite())
         period=(period/factor).coerceIn(0.25,1.5); manualTempo=true; confidence=1.0
         barEvidence.clear(); manualBar=false; barLocked=false; barConfidence=0.0
+        clearBarWindow()
     }
 
     fun automatic() {
         manualTempo=false; manualBar=false; taps.clear(); barEvidence.clear(); barLocked=false; barConfidence=0.0
         lastFit=Double.NEGATIVE_INFINITY
+        lastPeriodicEstimate=null
+        clearBarWindow()
     }
 
     fun state(time: Double, beat: Float = 0f, downbeat: Float = 0f): RhythmState {

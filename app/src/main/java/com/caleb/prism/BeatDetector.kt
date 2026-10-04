@@ -39,15 +39,18 @@ class BeatDetector(context: Context, asset: String = "beatnet.onnx") : AutoClose
 }
 
 /** Converts capture PCM into timestamped musical timing; never runs on the UI or GL thread. */
-class RhythmAnalyzer(context: Context) : AutoCloseable {
+class RhythmAnalyzer(context: Context, private val trace: ((Double,FloatArray,FloatArray)->Unit)?=null) : AutoCloseable {
     private val detector=BeatDetector(context)
     private val generalDetector=BeatDetector(context,"beatnet-general.onnx")
     private val features=BeatFeatures(context.assets.open("rhythm/filters.f32"))
     private val resampler=BeatResampler()
     private val trackers=listOf(RhythmTracker(),RhythmTracker())
+    private val recoveryTrackers=listOf(RhythmTracker(true),RhythmTracker(true))
     private val selector=RhythmSelector()
-    val tracker: RhythmTracker get() = trackers[selector.selected]
-    fun automaticTiming() { trackers.forEach { it.automatic() } }
+    private val recoverySelector=RhythmSelector()
+    private val recovery=RhythmRecovery()
+    val tracker: RhythmTracker get() = if (recovery.usingRecovery) recoveryTrackers[recoverySelector.selected] else trackers[selector.selected]
+    fun automaticTiming() { (trackers+recoveryTrackers).forEach { it.automatic() } }
     private val rolling=FloatArray(2293)
     private val hop=FloatArray(441)
     private var filled=0
@@ -55,6 +58,7 @@ class RhythmAnalyzer(context: Context) : AutoCloseable {
     private var origin=Double.NaN
     private var inputSamples=0L
     private var peakRms=0.05
+    private var automaticGain=1.0
     private var quietSeconds=0.0
     private var cleared=false
     private var lastChange=Double.NEGATIVE_INFINITY
@@ -66,14 +70,19 @@ class RhythmAnalyzer(context: Context) : AutoCloseable {
         // Gradually acquire the hardware clock without moving beat timestamps backwards.
         origin=if (origin.isNaN()) captureOrigin else origin+(captureOrigin-origin).coerceIn(-0.001,0.001)
         inputSamples+=pcm.size
-        trackers.forEach { it.setMeter(meter) }
+        (trackers+recoveryTrackers).forEach { it.setMeter(meter) }
         var squares=0.0
         for (sample in pcm) { val value=sample/32768.0; squares+=value*value }
         val rms=sqrt(squares/pcm.size)
         val dt=pcm.size/48000.0
         peakRms=max(rms,peakRms*exp(-dt/3.0))
         // The model was trained on mastered music. Boost quiet inputs without attenuating normal playback.
-        val gain=((0.16/max(0.018,peakRms)).coerceIn(1.0,8.0)*sensitivity/1.4).coerceIn(0.25,12.0).toFloat()
+        val targetGain=(0.28/max(0.018,peakRms)).coerceIn(1.0,8.0)
+        // Large level increases need an immediate gain reduction. Smooth smaller changes in
+        // both directions: block RMS flutter must not become artificial beat transients.
+        automaticGain=if (targetGain<automaticGain*.8) targetGain
+            else automaticGain+(targetGain-automaticGain)*(1-exp(-dt/.5))
+        val gain=(automaticGain*sensitivity/1.4).coerceIn(0.25,12.0).toFloat()
         val audible=rms > 0.0012
         quietSeconds=if (audible) 0.0 else quietSeconds+dt
         if (quietSeconds > 1.5 && !cleared) { detector.reset(); generalDetector.reset(); features.reset(); cleared=true }
@@ -100,10 +109,13 @@ class RhythmAnalyzer(context: Context) : AutoCloseable {
                     dynamicInput=changing
                     val probabilities=if (!changing) floatArrayOf(0f,0f,1f) else detector.predict(requireNotNull(frame))
                     val general=if (!changing) floatArrayOf(0f,0f,1f) else generalDetector.predict(requireNotNull(frame))
+                    trace?.invoke(time,probabilities,general)
                     val states=listOf(trackers[0].observe(time,probabilities[0],probabilities[1],audible),
                         trackers[1].observe(time,general[0],general[1],audible))
+                    val recovered=listOf(recoveryTrackers[0].observe(time,probabilities[0],probabilities[1],audible),
+                        recoveryTrackers[1].observe(time,general[0],general[1],audible))
                     inferenceMs=(System.nanoTime()-started)/1e6f
-                    emit(selector.choose(states,time))
+                    emit(recovery.choose(selector.choose(states,time),recoverySelector.choose(recovered,time),time))
                 }
             }
         }

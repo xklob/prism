@@ -417,4 +417,49 @@ class PrismDeviceTest {
             assertFalse(result.barLocked)
         }
     }
+
+    @Test fun k_quietReflectedMusicKeepsItsBeatThroughAVolumeChange() {
+        val bytes=instrumentation.context.assets.open("rhythm/drums128.pcm").use { it.readBytes() }
+        val dry=ShortArray(bytes.size/2).also { ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN).asShortBuffer().get(it) }
+        val random=kotlin.random.Random(73)
+        val room=ShortArray(dry.size) { i ->
+            fun delayed(delay: Int)=if (i>=delay) dry[i-delay]/32768.0 else 0.0
+            val volume=if (i<16*48000) .25 else .07
+            val sample=(delayed(0)+.45*delayed(3120)+.25*delayed(6576))*volume+(random.nextDouble()*2-1)*.003
+            (sample.coerceIn(-1.0,1.0)*32767).roundToInt().toShort()
+        }
+        var frames=0; var accurate=0; var result=RhythmState()
+        RhythmAnalyzer(context).use { analyzer ->
+            for (start in 0..room.size-960 step 960) {
+                analyzer.process(room.copyOfRange(start,start+960),1000.0+start/48000.0,1.4f,0) { s ->
+                    result=s
+                    if (s.timestamp>=1008) {
+                        frames++
+                        val delta=s.position-(s.timestamp-1000-.3)*128/60
+                        val phaseError=abs(delta-round(delta))*60/128
+                        if (s.locked && abs(s.bpm-128)<2 && phaseError<.100) accurate++
+                    }
+                }
+            }
+        }
+        File(evidence,"reflected-music.txt").writeText("accurate_fraction=${accurate.toDouble()/frames}\n$result\n")
+        assertTrue("Quiet room input must hold the known beat: $accurate/$frames; $result",accurate>frames*.85)
+        assertTrue(result.locked)
+    }
+
+    @Test fun l_unstructuredNoiseDoesNotProduceAConfidentMusicalClock() {
+        val random=kotlin.random.Random(57)
+        var checked=0; var locked=0; var bars=0
+        RhythmAnalyzer(context).use { analyzer ->
+            for (block in 0 until 1500) {
+                val pcm=ShortArray(960) { ((random.nextDouble()*2-1)*5000).roundToInt().toShort() }
+                analyzer.process(pcm,1000.0+block*.02,1.4f,0) { s ->
+                    if (block>=500) { checked++; if (s.locked) locked++; if (s.barLocked) bars++ }
+                }
+            }
+        }
+        File(evidence,"noise-rejection.txt").writeText("beat_locked_fraction=${locked.toDouble()/checked}\nbar_locked_fraction=${bars.toDouble()/checked}\n")
+        assertTrue("Noise cannot sustain a confident beat: $locked/$checked",locked<checked*.05)
+        assertEquals("Noise cannot establish a musical measure",0,bars)
+    }
 }

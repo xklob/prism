@@ -34,4 +34,13 @@ class BeatFeaturesTest {
         assertTrue("Passband preserved",power(a)>0.035)
         assertTrue("Out-of-band content must not alias into beat features",power(high)<power(a)*0.001)
     }
+    @Test fun resamplingMatchesReferenceAcrossTheTrainedFrequencyBands() {
+        val bytes=requireNotNull(javaClass.getResourceAsStream("/rhythm/resample-input.pcm")).use { it.readBytes() }
+        val samples=ShortArray(bytes.size/2).also { ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN).asShortBuffer().get(it) }
+        val expected=fixture("resample-output")
+        val actual=mutableListOf<Float>()
+        BeatResampler().push(samples) { actual.add(it) }
+        assertTrue(actual.size>expected.size-12)
+        for (i in actual.indices) assertEquals("Resampled frame $i",expected[i],actual[i],0.00015f)
+    }
 }

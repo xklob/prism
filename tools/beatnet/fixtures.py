@@ -60,9 +60,18 @@ def activations(pcm,rate):
             output.append([(end-970)/22050,*probability[:2]])
     return np.asarray(output)
 
+def resampler_fixture():
+    # Broad-spectrum input checks the complete trained passband, including treble.
+    t=np.arange(4800)/48000
+    wave=sum(.09*np.sin(2*np.pi*hz*t) for hz in [61,251,3000,9500,10200,10800,16000])
+    pcm=(wave*32767).astype('<i2')
+    pcm.tofile(RES/'resample-input.pcm')
+    scipy.signal.resample_poly(pcm.astype(np.float32)/32768,147,320).astype('<f4').tofile(RES/'resample-output.f32')
+
 def main():
     ASSETS.mkdir(parents=True,exist_ok=True)
     RES.mkdir(parents=True,exist_ok=True)
+    resampler_fixture()
     for name,bpm,meter in [('drums128',128,4),('drums174',174,4),('waltz96',96,3)]:
         pcm=music(bpm,meter)
         if name=='drums128': (pcm*32767).astype('<i2').tofile(ASSETS/(name+'.pcm'))

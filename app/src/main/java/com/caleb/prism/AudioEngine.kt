@@ -42,8 +42,17 @@ object AudioEngine {
             report("Allow microphone access to connect audio."); return
         }
         start(context, AudioSource.MICROPHONE) {
-            AudioRecord.Builder().setAudioSource(MediaRecorder.AudioSource.VOICE_RECOGNITION)
+            fun create(source: Int)=AudioRecord.Builder().setAudioSource(source)
                 .setAudioFormat(format()).setBufferSizeInBytes(bufferSize()).build()
+            val rawSupported=context.getSystemService(AudioManager::class.java)
+                .getProperty(AudioManager.PROPERTY_SUPPORT_AUDIO_SOURCE_UNPROCESSED)=="true"
+            // Preserve musical transients on devices offering raw input. Android's documented
+            // fallback is VOICE_RECOGNITION, which also avoids AGC and noise suppression.
+            val raw=if (rawSupported) runCatching { create(MediaRecorder.AudioSource.UNPROCESSED) }.getOrNull() else null
+            if (raw != null && raw.state == AudioRecord.STATE_INITIALIZED) raw else {
+                raw?.release()
+                create(MediaRecorder.AudioSource.VOICE_RECOGNITION)
+            }
         }
     }
 

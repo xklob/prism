@@ -102,14 +102,22 @@ class BeatResampler {
     private val ring=FloatArray(128)
     private var written=0L
     private var output=0L
-    private val radius=24
+    private val radius=22
+    private fun bessel0(x: Double): Double {
+        var sum=1.0; var term=1.0
+        for (k in 1..20) { term*=x*x/(4*k*k); sum+=term }
+        return sum
+    }
     private val kernels=Array(147) { phase ->
         val fraction=phase/147.0
         val taps=DoubleArray(radius*2) { i ->
             val x=i-radius+1-fraction
-            val cutoff=0.20 // 9.6 kHz, below the 22.05 kHz output's Nyquist limit.
+            // Match the reference polyphase passband and Kaiser window. Cutting at 9.6 kHz
+            // removes several trained feature bands and changes live-music predictions.
+            val cutoff=22050.0/48000/2
+            val width=3200.0/147
             val sinc=if (abs(x) < 1e-12) 2*cutoff else sin(2*PI*cutoff*x)/(PI*x)
-            sinc*(0.5+0.5*cos(PI*x/radius))
+            if (abs(x)>width) 0.0 else sinc*bessel0(5*sqrt(1-(x/width).pow(2)))/bessel0(5.0)
         }
         val total=taps.sum()
         FloatArray(taps.size) { (taps[it]/total).toFloat() }

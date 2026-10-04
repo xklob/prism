@@ -28,6 +28,11 @@ with PyTorch, and writes model/frontend assets plus reference test vectors.
 track. No third-party recordings are included. Test PCM lives only in the test
 APK, not the shipped app.
 
+The fixture generator also writes a short multitone input and reference-resampled
+output for JVM tests, covering bass, the upper trained bands, and out-of-band
+treble. The streaming resampler uses a Kaiser-windowed sinc with the reference
+22.05 kHz output cutoff; preserving only lower frequencies changes model inputs.
+
 The frontend uses 22,050 Hz audio, 1,411-sample Hann windows, 441-sample hops,
 136 log-frequency bands and 136 positive-difference bands. Kotlin uses a
 band-limited 48,000-to-22,050 Hz resampler and Bluestein FFT to match the reference
