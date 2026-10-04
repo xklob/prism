@@ -46,7 +46,7 @@ private val ReadableText = TextStyle(color = Color.White, shadow = Shadow(Color.
 fun TuningOverlay(
     s: VisualSettings, status: CaptureStatus, connecting: Boolean,
     change: (VisualSettings) -> Unit, connect: () -> Unit, disconnect: () -> Unit,
-    fps: () -> Float, dismiss: () -> Unit
+    fps: () -> Float, dismiss: () -> Unit, captureLocked: Boolean = false
 ) {
     var tab by rememberSaveable { mutableStateOf("Geometry") }
     var hidden by rememberSaveable { mutableStateOf(false) }
@@ -161,11 +161,11 @@ fun TuningOverlay(
                                 }
                                 Row(Modifier.fillMaxWidth().alpha(otherAlpha), verticalAlignment = Alignment.CenterVertically) {
                                     AudioSource.entries.forEach { source ->
-                                        TextButton(onClick = { change(s.copy(source = source)) }, modifier = Modifier.weight(1f), contentPadding = PaddingValues(4.dp)) {
+                                        TextButton(onClick = { change(s.copy(source = source)) }, enabled = !captureLocked, modifier = Modifier.weight(1f), contentPadding = PaddingValues(4.dp)) {
                                             Text(source.label, style = ReadableText, fontSize = 11.sp, color = if (source == s.source) OverlayAccent else Color.White)
                                         }
                                     }
-                                    TextButton(onClick = if (status.running) disconnect else connect, enabled = s.audioEnabled && !connecting, contentPadding = PaddingValues(4.dp)) {
+                                    TextButton(onClick = if (status.running) disconnect else connect, enabled = s.audioEnabled && !connecting && !captureLocked, contentPadding = PaddingValues(4.dp)) {
                                         Text(if (connecting) "Wait…" else if (status.running) "Stop" else "Connect", style = ReadableText, fontSize = 11.sp)
                                     }
                                 }

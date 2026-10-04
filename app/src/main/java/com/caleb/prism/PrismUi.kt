@@ -48,12 +48,15 @@ private val Mint = Color(0xFF82E8CF)
 fun PrismApp(
     settings: VisualSettings, renderError: String?, connecting: Boolean,
     createSurface: () -> PrismSurface, onChange: (VisualSettings) -> Unit,
-    onConnect: () -> Unit, onDisconnect: () -> Unit, onImmersive: (Boolean) -> Unit
+    onConnect: () -> Unit, onDisconnect: () -> Unit, onImmersive: (Boolean) -> Unit,
+    recording: SessionRecorder, onRecord: (AudioSource) -> Unit,
+    onOpenRecording: (SavedRecording) -> Unit, onShareRecording: (SavedRecording) -> Unit
 ) {
     var fullscreen by rememberSaveable { mutableStateOf(false) }
     var tuning by rememberSaveable { mutableStateOf(false) }
     var surface by remember { mutableStateOf<PrismSurface?>(null) }
     val status by AudioEngine.status.collectAsStateWithLifecycle()
+    val recordingState by recording.state.collectAsStateWithLifecycle()
     LaunchedEffect(fullscreen) { onImmersive(fullscreen) }
     BackHandler(fullscreen || tuning) { if (tuning) tuning = false else fullscreen = false }
     MaterialTheme(colorScheme = darkColorScheme(primary = Lilac, secondary = Mint, background = Ink, surface = Panel, onSurface = Color.White)) {
@@ -84,8 +87,8 @@ fun PrismApp(
                             Spacer(Modifier.weight(1f))
                             StatusPill(if (settings.paused) "PAUSED" else if (!settings.audioEnabled) "AMBIENT" else if (status.running) "AUDIO ON" else "AUDIO READY", if (status.running) Mint else Lilac)
                         }
-                        if (!landscape) {
-                            Spacer(Modifier.height(34.dp))
+                        if (!landscape && !settings.audioEnabled) {
+                            Spacer(Modifier.height(if (recordingState.busy) 82.dp else 34.dp))
                             Text(settings.scene.title, color = Color.White, fontSize = 38.sp, fontWeight = FontWeight.Light, letterSpacing = (-1).sp)
                             Spacer(Modifier.height(5.dp))
                             Text(settings.scene.subtitle, color = Color(0xFFCDD0E0), fontSize = 13.sp)
@@ -97,7 +100,7 @@ fun PrismApp(
                         Spacer(Modifier.height(if (landscape) 8.dp else 42.dp))
                         Column(Modifier.navigationBarsPadding().verticalScroll(rememberScrollState()).padding(bottom = 16.dp)) {
                             if (settings.audioEnabled) {
-                                AudioPanel(settings.source, status, connecting, { onChange(settings.copy(source = it)) }, onConnect, onDisconnect)
+                                AudioPanel(settings.source, status, connecting, { onChange(settings.copy(source = it)) }, onConnect, onDisconnect, recordingState.busy)
                                 Spacer(Modifier.height(20.dp))
                             }
                             Row(Modifier.padding(horizontal = 24.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -122,14 +125,14 @@ fun PrismApp(
                                     Spacer(Modifier.width(9.dp))
                                     Text("Tune", color = Color.White, fontSize = 13.sp)
                                 }
-                                Button(onClick = { fullscreen = true }, modifier = Modifier.weight(1.3f).height(48.dp), shape = RoundedCornerShape(16.dp), contentPadding = PaddingValues(horizontal = 14.dp), colors = ButtonDefaults.buttonColors(containerColor = Lilac, contentColor = Ink)) {
-                                    Glyph("expand", Modifier.size(17.dp), Ink)
+                                OutlinedButton(onClick = { fullscreen = true }, modifier = Modifier.weight(1.3f).height(48.dp), shape = RoundedCornerShape(16.dp), border = BorderStroke(1.dp, Lilac.copy(alpha = 0.7f)), contentPadding = PaddingValues(horizontal = 14.dp), colors = ButtonDefaults.outlinedButtonColors(containerColor = Lilac.copy(alpha = 0.2f), contentColor = Color.White)) {
+                                    Glyph("expand", Modifier.size(17.dp), Color.White)
                                     Spacer(Modifier.width(8.dp))
-                                    Text("Immerse", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                                    Text("Immerse", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                                 }
                             }
+                            RecordingLauncher(recordingState, settings.source, onRecord, onOpenRecording, onShareRecording)
                             if (!landscape) {
-                                Spacer(Modifier.height(16.dp))
                                 Text("DRAG TO BEND THE LIGHT", Modifier.fillMaxWidth(), textAlign = androidx.compose.ui.text.style.TextAlign.Center, fontSize = 9.sp, letterSpacing = 2.sp, color = Muted.copy(alpha = 0.65f))
                             }
                         }
@@ -144,8 +147,17 @@ fun PrismApp(
             if (renderError != null) Text(renderError, Modifier.align(Alignment.Center).padding(30.dp).background(Panel).padding(20.dp), color = Color.White)
             if (tuning) TuningOverlay(
                 settings, status, connecting, onChange, onConnect, onDisconnect,
-                fps = { surface?.engine?.measuredFps ?: 0f }, dismiss = { tuning = false }
+                fps = { surface?.engine?.measuredFps ?: 0f }, dismiss = { tuning = false }, captureLocked = recordingState.busy
             )
+            if (recordingState.busy) RecordingBadge(recordingState, { recording.stop() },
+                Modifier.align(Alignment.TopStart).safeDrawingPadding().padding(start = 20.dp, top = if (fullscreen) 8.dp else 70.dp))
+            if (!recordingState.busy && recordingState.message != null) {
+                Snackbar(Modifier.align(Alignment.TopCenter).safeDrawingPadding().padding(horizontal = 16.dp, vertical = 68.dp),
+                    action = { TextButton(onClick = recording::dismissMessage) { Text("Dismiss") } }) {
+                    Text(recordingState.message!!)
+                }
+                LaunchedEffect(recordingState.message) { delay(6000); recording.dismissMessage() }
+            }
         }
     }
 }
@@ -204,7 +216,7 @@ fun PrismApp(
     }
 }
 
-@Composable private fun AudioPanel(source: AudioSource, status: CaptureStatus, connecting: Boolean, onSource: (AudioSource) -> Unit, onConnect: () -> Unit, onDisconnect: () -> Unit) {
+@Composable private fun AudioPanel(source: AudioSource, status: CaptureStatus, connecting: Boolean, onSource: (AudioSource) -> Unit, onConnect: () -> Unit, onDisconnect: () -> Unit, captureLocked: Boolean) {
     var energy by remember { mutableFloatStateOf(0f) }
     var rhythm by remember { mutableStateOf(RhythmState()) }
     var timingNow by remember { mutableDoubleStateOf(0.0) }
@@ -225,7 +237,7 @@ fun PrismApp(
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             AudioSource.entries.forEach { item ->
                 Row(Modifier.weight(1f).clip(RoundedCornerShape(10.dp)).background(if (source == item) Lilac.copy(alpha = 0.16f) else Color.Transparent)
-                    .selectable(source == item, onClick = { onSource(item) }, role = Role.RadioButton).padding(horizontal = 9.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
+                    .selectable(source == item, enabled = !captureLocked, onClick = { onSource(item) }, role = Role.RadioButton).padding(horizontal = 9.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
                     Glyph(if (item == AudioSource.MICROPHONE) "mic" else "audio", Modifier.size(14.dp), if (source == item) Lilac else Muted)
                     Spacer(Modifier.width(7.dp))
                     Text(item.label, color = if (source == item) Lilac else Muted, fontSize = 11.sp, maxLines = 1)
@@ -235,8 +247,8 @@ fun PrismApp(
         Spacer(Modifier.height(10.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(if (source == AudioSource.SYSTEM) "Phone playback" else "Microphone input", color = Muted, fontSize = 11.sp, modifier = Modifier.weight(1f))
-            TextButton(onClick = if (status.running) onDisconnect else onConnect, enabled = !connecting, contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)) {
-                Text(if (connecting) "Connecting…" else if (status.running) "Stop" else "Connect audio", fontSize = 11.sp)
+            TextButton(onClick = if (status.running) onDisconnect else onConnect, enabled = !connecting && !captureLocked, contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)) {
+                Text(if (captureLocked) "Recording audio" else if (connecting) "Connecting…" else if (status.running) "Stop" else "Connect audio", fontSize = 11.sp)
             }
         }
         RhythmMonitor(status.running, rhythm, timingNow, energy, details = false)

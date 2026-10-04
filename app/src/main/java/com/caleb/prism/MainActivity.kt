@@ -3,6 +3,8 @@ package com.caleb.prism
 import android.Manifest
 import android.app.Activity
 import android.content.Intent
+import android.content.ClipData
+import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
 import android.media.projection.MediaProjectionConfig
 import android.media.projection.MediaProjectionManager
@@ -19,6 +21,8 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     private lateinit var store: SettingsStore
@@ -27,25 +31,37 @@ class MainActivity : ComponentActivity() {
     private var connecting by mutableStateOf(false)
     private var surface: PrismSurface? = null
     private var resumeMicrophone = false
+    private lateinit var recording: SessionRecorder
+    private var foreground = false
+    private var unlockedOrientation: Int? = null
+
+    private fun wantsAudio() = (settings.audioEnabled && !settings.paused) || recording.state.value.busy
 
     private val audioPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         connecting = false
-        if (granted && settings.audioEnabled && !settings.paused) connectAudio()
-        else if (!granted) AudioEngine.report("Audio permission was declined. You can allow it in Android Settings, or enjoy an ambient scene.")
+        if (granted && wantsAudio()) connectAudio()
+        else if (!granted) {
+            recording.stop("Recording needs audio permission. You can allow it in Android Settings.")
+            AudioEngine.report("Audio permission was declined. You can allow it in Android Settings, or enjoy an ambient scene.")
+        }
     }
     private val playbackPermission = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         connecting = false
-        if (result.resultCode == Activity.RESULT_OK && result.data != null && settings.audioEnabled && settings.source == AudioSource.SYSTEM && !settings.paused) {
+        if (result.resultCode == Activity.RESULT_OK && result.data != null && wantsAudio() && settings.source == AudioSource.SYSTEM) {
             try {
                 ContextCompat.startForegroundService(this, Intent(this, PlaybackCaptureService::class.java).putExtra("consent", result.data))
             } catch (_: Exception) {
                 AudioEngine.report("Couldn't connect system audio. Reopen Prism and try again.")
+                recording.stop("Couldn't connect system audio. Try recording again.")
             }
-        } else if (result.resultCode != Activity.RESULT_OK) AudioEngine.report("System audio wasn't connected. Tap Connect audio whenever you're ready.")
+        } else if (result.resultCode != Activity.RESULT_OK) {
+            recording.stop("System audio recording was canceled.")
+            AudioEngine.report("System audio wasn't connected. Tap Connect audio whenever you're ready.")
+        }
     }
     private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
         connecting = false
-        if (settings.audioEnabled && settings.source == AudioSource.SYSTEM && !settings.paused) requestSystemProjection()
+        if (wantsAudio() && settings.source == AudioSource.SYSTEM) requestSystemProjection()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -55,33 +71,58 @@ class MainActivity : ComponentActivity() {
             navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT)
         )
         store = SettingsStore(this)
+        recording = SessionRecorder(this) {
+            if (!isDestroyed) {
+                unlockedOrientation?.let { requestedOrientation = it }
+                unlockedOrientation = null
+                if (!settings.audioEnabled || settings.paused || (!foreground && settings.source == AudioSource.MICROPHONE)) {
+                    disconnectAudio()
+                    resumeMicrophone = !foreground && settings.audioEnabled && !settings.paused && settings.source == AudioSource.MICROPHONE
+                }
+                updateWakeLock()
+            }
+        }
         settings = store.load()
         if (AudioEngine.status.value.running && AudioEngine.status.value.source == AudioSource.SYSTEM) {
             settings = settings.copy(source = AudioSource.SYSTEM, audioEnabled = true)
         }
         updateWakeLock()
+        lifecycleScope.launch {
+            AudioEngine.status.collect { status ->
+                if (status.running) prepareRecording()
+                else if (recording.state.value.phase in listOf(RecordingPhase.PREPARING, RecordingPhase.RECORDING)) {
+                    recording.stop("Audio disconnected. The recording was stopped.")
+                } else if (recording.state.value.phase == RecordingPhase.CONNECTING && status.message != null) recording.stop(status.message)
+            }
+        }
         setContent {
             PrismApp(settings, renderError, connecting,
                 createSurface = {
                     PrismSurface(this) { error -> runOnUiThread { renderError = error } }.also {
                         surface = it; it.update(settings)
+                        it.post { prepareRecording() }
                     }
                 },
                 onChange = ::changeSettings,
                 onConnect = ::connectAudio,
                 onDisconnect = ::disconnectAudio,
-                onImmersive = ::updateImmersive
+                onImmersive = ::updateImmersive,
+                recording = recording,
+                onRecord = ::startRecording,
+                onOpenRecording = { openRecording(it, false) },
+                onShareRecording = { openRecording(it, true) }
             )
         }
     }
 
     private fun changeSettings(next: VisualSettings) {
+        if (recording.state.value.busy && next.source != settings.source) return
         val resolved = if (next.scene != settings.scene) {
             store.save(settings)
             store.loadScene(next.scene, next.source).copy(paused = next.paused)
         } else next
         // Resolve the destination's saved audio toggle before deciding whether to retain capture.
-        if (!resolved.audioEnabled || resolved.source != settings.source || resolved.paused) disconnectAudio()
+        if (!recording.state.value.busy && (!resolved.audioEnabled || resolved.source != settings.source || resolved.paused)) disconnectAudio()
         settings = resolved
         AudioEngine.sensitivity = resolved.sensitivity
         AudioEngine.beatsPerBar = resolved.beatsPerBar
@@ -91,8 +132,12 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun connectAudio() {
-        if (connecting || !settings.audioEnabled) return
-        if (settings.paused) changeSettings(settings.copy(paused = false))
+        if (connecting || (!settings.audioEnabled && !recording.state.value.busy)) return
+        if (settings.paused && !recording.state.value.busy) changeSettings(settings.copy(paused = false))
+        if (AudioEngine.status.value.running && AudioEngine.status.value.source == settings.source) {
+            prepareRecording()
+            return
+        }
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             connecting = true
             audioPermission.launch(Manifest.permission.RECORD_AUDIO)
@@ -130,6 +175,40 @@ class MainActivity : ComponentActivity() {
         stopService(Intent(this, PlaybackCaptureService::class.java))
     }
 
+    private fun startRecording(source: AudioSource) {
+        if (recording.state.value.busy) return
+        if (settings.source != source) changeSettings(settings.copy(source = source))
+        recording.request(source)
+        connectAudio()
+        updateWakeLock()
+    }
+
+    private fun prepareRecording() {
+        if (!foreground || recording.state.value.phase != RecordingPhase.CONNECTING) return
+        val view = surface ?: return
+        if (view.width == 0 || view.height == 0) return
+        if (!AudioEngine.status.value.running) return
+        if (unlockedOrientation == null) {
+            unlockedOrientation = requestedOrientation
+            requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LOCKED
+        }
+        recording.prepare(view)
+    }
+
+    private fun openRecording(saved: SavedRecording, share: Boolean) {
+        try {
+            val intent = if (share) Intent(Intent.ACTION_SEND).apply {
+                type = "video/mp4"
+                putExtra(Intent.EXTRA_STREAM, saved.uri)
+                clipData = ClipData.newRawUri(saved.name, saved.uri)
+            } else Intent(Intent.ACTION_VIEW).setDataAndType(saved.uri, "video/mp4")
+            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            startActivity(if (share) Intent.createChooser(intent, "Share Prism recording") else intent)
+        } catch (_: Exception) {
+            android.widget.Toast.makeText(this, "Find your recording in Movies/Prism using Photos or Files.", android.widget.Toast.LENGTH_LONG).show()
+        }
+    }
+
     private fun updateImmersive(fullscreen: Boolean) {
         val controller = WindowCompat.getInsetsController(window, window.decorView)
         controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
@@ -138,20 +217,24 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun updateWakeLock() {
-        if (settings.paused) window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        if (settings.paused && !recording.state.value.busy) window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         else window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
     }
 
     override fun onResume() {
         super.onResume()
+        foreground = true
         surface?.onResume()
         if (resumeMicrophone && settings.audioEnabled && settings.source == AudioSource.MICROPHONE && !settings.paused) {
             resumeMicrophone = false
             AudioEngine.startMicrophone(this)
         }
+        prepareRecording()
     }
 
     override fun onPause() {
+        foreground = false
+        if (recording.state.value.phase in listOf(RecordingPhase.PREPARING, RecordingPhase.RECORDING)) recording.stop()
         surface?.onPause()
         if (AudioEngine.status.value.source == AudioSource.MICROPHONE) {
             resumeMicrophone = true
@@ -161,6 +244,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        recording.stop()
         if (isFinishing) disconnectAudio()
         surface = null
         super.onDestroy()

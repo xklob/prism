@@ -16,7 +16,15 @@ class PrismSurface @JvmOverloads constructor(context: Context, onError: (String)
     val engine = PrismRenderer(context, onError)
     init {
         setEGLContextClientVersion(3)
-        setEGLConfigChooser(8, 8, 8, 8, 0, 0)
+        setEGLConfigChooser { egl, display ->
+            val attributes = intArrayOf(0x3024, 8, 0x3023, 8, 0x3022, 8, 0x3021, 8,
+                0x3040, 0x40, 0x3033, 4, 0x3142, 1, 0x3038) // GLES3, window, EGL_RECORDABLE_ANDROID
+            val count = IntArray(1)
+            check(egl.eglChooseConfig(display, attributes, null, 0, count) && count[0] > 0) { "No recordable GLES configuration" }
+            val configs = arrayOfNulls<EGLConfig>(count[0])
+            check(egl.eglChooseConfig(display, attributes, configs, configs.size, count))
+            configs[0]
+        }
         preserveEGLContextOnPause = true
         setRenderer(engine)
         renderMode = RENDERMODE_CONTINUOUSLY
@@ -24,6 +32,15 @@ class PrismSurface @JvmOverloads constructor(context: Context, onError: (String)
     fun update(settings: VisualSettings) {
         engine.settings = settings
         resizeBuffer(width, height, settings.batterySaver)
+    }
+    internal fun beginRecording(encoder: SessionEncoder, started: () -> Unit) = queueEvent {
+        try {
+            engine.recording = RecordingGlTarget(encoder)
+            started()
+        } catch (error: Exception) { encoder.fail(error.message ?: "Couldn't start video recording") }
+    }
+    internal fun endRecording(done: () -> Unit) = queueEvent {
+        try { engine.recording?.close() } finally { engine.recording = null; done() }
     }
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
         super.onSizeChanged(w, h, oldw, oldh)
@@ -44,6 +61,9 @@ class PrismSurface @JvmOverloads constructor(context: Context, onError: (String)
 }
 
 class PrismRenderer(private val context: Context, private val onError: (String) -> Unit) : GLSurfaceView.Renderer {
+    internal var recording: RecordingGlTarget? = null
+    private var viewportWidth = 1
+    private var viewportHeight = 1
     @Volatile var settings = VisualSettings()
     @Volatile var touchX = 0f
     @Volatile var touchY = 0f
@@ -65,6 +85,11 @@ class PrismRenderer(private val context: Context, private val onError: (String) 
     private var touchSmoothY = 0f
 
     override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) {
+        recording?.let {
+            it.fail(IllegalStateException("Rendering restarted. The recording was stopped."))
+            it.close()
+        }
+        recording = null
         try {
             fun compile(type: Int, asset: String): Int {
                 val shader = glCreateShader(type)
@@ -105,6 +130,7 @@ class PrismRenderer(private val context: Context, private val onError: (String) 
     }
 
     override fun onSurfaceChanged(gl: GL10?, width: Int, height: Int) {
+        viewportWidth = width; viewportHeight = height
         glViewport(0, 0, width, height)
         if (program != 0) {
             glUseProgram(program)
@@ -156,13 +182,29 @@ class PrismRenderer(private val context: Context, private val onError: (String) 
             glUniform2f(uniforms.getValue("uDownbeat"), motion.flash, motion.inversion)
             glDrawArrays(GL_TRIANGLE_STRIP, 0, 4)
         } else { glClearColor(0.03f, 0.03f, 0.08f, 1f); glClear(GL_COLOR_BUFFER_BIT) }
+        recording?.let { target ->
+            try {
+                target.draw(System.nanoTime()) { width, height ->
+                    glViewport(0, 0, width, height)
+                    glUniform2f(uniforms.getValue("uResolution"), width.toFloat(), height.toFloat())
+                    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4)
+                }
+            } catch (error: Exception) {
+                target.fail(error)
+                target.close()
+                recording = null
+            } finally {
+                glViewport(0, 0, viewportWidth, viewportHeight)
+                if (program != 0) glUniform2f(uniforms.getValue("uResolution"), viewportWidth.toFloat(), viewportHeight.toFloat())
+            }
+        }
         if (statsStart == 0L) statsStart = started
         frameCounter++
         if (started - statsStart > 2_000_000_000L) {
             measuredFps = frameCounter * 1e9f / (started - statsStart)
             statsStart = started; frameCounter = 0
         }
-        val frameMs = if (s.paused) 100L else if (s.batterySaver) 33L else 16L
+        val frameMs = if (s.paused && recording == null) 100L else if (s.batterySaver) 33L else 16L
         val elapsedMs = (SystemClock.elapsedRealtimeNanos() - started) / 1_000_000L
         if (elapsedMs < frameMs) SystemClock.sleep(frameMs - elapsedMs)
     }

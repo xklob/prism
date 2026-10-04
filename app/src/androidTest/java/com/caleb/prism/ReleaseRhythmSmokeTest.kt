@@ -104,6 +104,35 @@ class ReleaseRhythmSmokeTest {
             device.takeScreenshot(File(evidence,"release-manual-alignment.png"))
             click("Auto timing")
             waitText("Beat locked · Bar locked · 4 beats")
+            click("Done")
+            val previousVideos=device.executeShellCommand("ls -1 /sdcard/Movies/Prism").lines().toSet()
+            click("Record session")
+            click("Start recording")
+            assertTrue("Signed release starts recording shared system audio", device.wait(Until.hasObject(By.text("Stop recording")),10000))
+            SystemClock.sleep(6000)
+            device.takeScreenshot(File(evidence,"release-recording.png"))
+            val label=device.findObject(By.text("Immerse"))!!.visibleBounds
+            val screen=instrumentation.uiAutomation.takeScreenshot()
+            try {
+                var readable=0
+                for (y in label.top until label.bottom) for (x in label.left until label.right) {
+                    val pixel=screen.getPixel(x,y)
+                    if ((pixel shr 16 and 255)>220 && (pixel shr 8 and 255)>220 && (pixel and 255)>220) readable++
+                }
+                assertTrue("Release fullscreen label remains visible while recording",readable>80)
+            } finally { screen.recycle() }
+            click("Stop recording")
+            assertTrue("Signed release saves its recording", device.wait(Until.hasObject(By.text("Last video")),10000))
+            val newVideos=device.executeShellCommand("ls -1 /sdcard/Movies/Prism").lines().filter { it !in previousVideos && it.endsWith(".mp4") }
+            assertEquals("One new release recording",1,newVideos.size)
+            File(evidence,"release-recording-file.txt").writeText(newVideos.single().trim()+"\n")
+            click("Last video")
+            SystemClock.sleep(1200)
+            assertNotEquals("Saved video opens in a player", app, device.currentPackageName)
+            device.pressBack()
+            assertTrue(device.wait(Until.hasObject(By.text("PRISM")),5000))
+            click("Tune")
+            click("Audio")
             track.pause()
             waitText("Waiting for sound.*")
             click("Stop")

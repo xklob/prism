@@ -12,7 +12,12 @@ import java.util.concurrent.ConcurrentLinkedQueue
 import android.util.Log
 import kotlin.concurrent.thread
 
-data class CaptureStatus(val running: Boolean = false, val source: AudioSource? = null, val message: String? = null)
+data class CaptureStatus(val running: Boolean = false, val source: AudioSource? = null, val message: String? = null, val channels: Int = 1)
+
+fun interface PcmSink {
+    /** Interleaved PCM, before analysis gain. The array is reused after this call. */
+    fun accept(samples: ShortArray, firstSampleNs: Long)
+}
 
 object AudioEngine {
     private val mutableStatus = MutableStateFlow(CaptureStatus())
@@ -34,6 +39,7 @@ object AudioEngine {
     private var worker: Thread? = null
     private const val SAMPLE_RATE = 48000
     private const val BLOCK = 960
+    @Volatile var pcmSink: PcmSink? = null
 
     fun report(message: String) { mutableStatus.value = CaptureStatus(message = message) }
 
@@ -65,16 +71,22 @@ object AudioEngine {
                 .addMatchingUsage(AudioAttributes.USAGE_MEDIA)
                 .addMatchingUsage(AudioAttributes.USAGE_GAME)
                 .addMatchingUsage(AudioAttributes.USAGE_UNKNOWN).build()
-            AudioRecord.Builder().setAudioPlaybackCaptureConfig(capture)
-                .setAudioFormat(format()).setBufferSizeInBytes(bufferSize()).build()
+            fun create(channels: Int) = AudioRecord.Builder().setAudioPlaybackCaptureConfig(capture)
+                .setAudioFormat(format(channels)).setBufferSizeInBytes(bufferSize(channels)).build()
+            val stereo = runCatching { create(2) }.getOrNull()
+            if (stereo != null && stereo.state == AudioRecord.STATE_INITIALIZED) stereo else {
+                stereo?.release()
+                create(1)
+            }
         }
     }
 
-    private fun format() = AudioFormat.Builder().setSampleRate(SAMPLE_RATE)
-        .setChannelMask(AudioFormat.CHANNEL_IN_MONO).setEncoding(AudioFormat.ENCODING_PCM_16BIT).build()
+    private fun channelMask(channels: Int) = if (channels == 2) AudioFormat.CHANNEL_IN_STEREO else AudioFormat.CHANNEL_IN_MONO
+    private fun format(channels: Int = 1) = AudioFormat.Builder().setSampleRate(SAMPLE_RATE)
+        .setChannelMask(channelMask(channels)).setEncoding(AudioFormat.ENCODING_PCM_16BIT).build()
 
-    private fun bufferSize() = maxOf(
-        AudioRecord.getMinBufferSize(SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT), BLOCK * 8
+    private fun bufferSize(channels: Int = 1) = maxOf(
+        AudioRecord.getMinBufferSize(SAMPLE_RATE, channelMask(channels), AudioFormat.ENCODING_PCM_16BIT), BLOCK * channels * 8
     )
 
     @Synchronized private fun start(context: Context, source: AudioSource, create: () -> AudioRecord) {
@@ -85,12 +97,14 @@ object AudioEngine {
             check(active.state == AudioRecord.STATE_INITIALIZED) { "Audio input could not initialize" }
             recorder = active
             val session = ++generation
-            mutableStatus.value = CaptureStatus(true, source)
+            val channels = active.channelCount
+            mutableStatus.value = CaptureStatus(true, source, channels = channels)
             worker = thread(name = "Prism audio", isDaemon = true) {
                 android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_AUDIO)
                 val analyzer = SpectrumAnalyzer(SAMPLE_RATE, 2048, BLOCK)
                 val spectrumWindow=ShortArray(2048)
                 val samples = ShortArray(BLOCK)
+                val captured = ShortArray(BLOCK * channels)
                 var offset = 0
                 var rhythmAnalyzer: RhythmAnalyzer? = null
                 var audioOrigin=Double.NaN
@@ -102,15 +116,20 @@ object AudioEngine {
                     active.startRecording()
                     check(active.recordingState == AudioRecord.RECORDSTATE_RECORDING) { "Audio input did not start" }
                     while (generation == session) {
-                        val read = active.read(samples, offset, BLOCK - offset, AudioRecord.READ_BLOCKING)
+                        val read = active.read(captured, offset, captured.size - offset, AudioRecord.READ_BLOCKING)
                         if (read < 0) error("Audio input disconnected")
                         if (read == 0) { Thread.sleep(8); continue }
                         offset += read
-                        if (offset == BLOCK) {
+                        if (offset == captured.size) {
                             if (audioOrigin.isNaN()) audioOrigin=System.nanoTime()/1e9-BLOCK.toDouble()/SAMPLE_RATE
                             // Use the capture clock when available, including buffered samples and clock drift.
                             if (active.getTimestamp(captureTimestamp, AudioTimestamp.TIMEBASE_MONOTONIC) == AudioRecord.SUCCESS) {
                                 audioOrigin=captureTimestamp.nanoTime/1e9-captureTimestamp.framePosition.toDouble()/SAMPLE_RATE
+                            }
+                            val firstSampleTime = audioOrigin + samplesRead.toDouble() / SAMPLE_RATE
+                            if (generation == session) pcmSink?.accept(captured, (firstSampleTime * 1e9).toLong())
+                            if (channels == 1) captured.copyInto(samples) else for (i in samples.indices) {
+                                samples[i] = ((captured[i * 2].toInt() + captured[i * 2 + 1].toInt()) / 2).toShort()
                             }
                             while (true) {
                                 val command=commands.poll() ?: break
@@ -122,7 +141,7 @@ object AudioEngine {
                                     4 -> timing.tracker.scaleTempo(2.0,command.time)
                                 }
                             }
-                            timing.process(samples,audioOrigin+samplesRead.toDouble()/SAMPLE_RATE,sensitivity,beatsPerBar) {
+                            timing.process(samples,firstSampleTime,sensitivity,beatsPerBar) {
                                 if (generation == session) rhythm=it
                             }
                             samplesRead+=BLOCK
