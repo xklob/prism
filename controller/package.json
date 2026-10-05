@@ -1,0 +1,14 @@
+{
+  "name": "prism-crowd-controller",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=24" },
+  "scripts": {
+    "start": "node src/server.ts",
+    "test": "node --test test/*.test.ts",
+    "check": "tsc --noEmit"
+  },
+  "dependencies": { "qrcode": "1.5.4" },
+  "devDependencies": { "@types/node": "^24.0.0", "@types/qrcode": "^1.5.5", "typescript": "~5.9.3" }
+}
