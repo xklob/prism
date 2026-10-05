@@ -2,6 +2,12 @@
 
 A native Android psychedelic visualizer. Kotlin, Jetpack Compose, and four original OpenGL ES 3 shaders. Android 10 or newer.
 
+## Crowd mode preview
+
+The [**1.8.0 preview**](https://github.com/xklob/prism/releases/tag/v1.8.0-preview.1) adds a Windows controller that uses the computer's own Wi-Fi card through Mobile Hotspot. Install the preview APK on the phones, extract the Windows controller ZIP, and double-click **Start-Prism.cmd**. The local dashboard provides audience invitations, a shared tempo and bar clock, all four patterns, scheduled flashes and color inversion, and per-phone timing diagnostics.
+
+See [the controller guide](controller/README.md) for setup, audio input, timing limits, and testing. Crowd mode is being developed on a feature branch. Software clock estimates do not establish physical synchronization between different phone screens.
+
 ## Scenes
 
 | Pattern | Optional audio response |

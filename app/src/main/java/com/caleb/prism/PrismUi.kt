@@ -51,22 +51,28 @@ fun PrismApp(
     onConnect: () -> Unit, onDisconnect: () -> Unit, onImmersive: (Boolean) -> Unit,
     recording: SessionRecorder, onRecord: (AudioSource) -> Unit,
     onOpenRecording: (SavedRecording) -> Unit, onShareRecording: (SavedRecording) -> Unit,
-    songAssistant: SongAssistant
+    songAssistant: SongAssistant, crowd: CrowdClient, crowdInvitation: String,
+    onCrowdJoin: (String, Boolean) -> Unit, onCrowdLeave: () -> Unit, onCrowdBrightness: (Float) -> Unit
 ) {
     var fullscreen by rememberSaveable { mutableStateOf(false) }
     var tuning by rememberSaveable { mutableStateOf(false) }
+    var crowdOpen by rememberSaveable { mutableStateOf(false) }
     var tuningTab by rememberSaveable { mutableStateOf("Geometry") }
     var surface by remember { mutableStateOf<PrismSurface?>(null) }
     val status by AudioEngine.status.collectAsStateWithLifecycle()
     val recordingState by recording.state.collectAsStateWithLifecycle()
+    val crowdStatus by crowd.status.collectAsStateWithLifecycle()
     LaunchedEffect(fullscreen) { onImmersive(fullscreen) }
-    BackHandler(fullscreen || tuning) { if (tuning) tuning = false else fullscreen = false }
+    LaunchedEffect(crowdInvitation) { if (crowdInvitation.isNotBlank()) { crowdOpen = true; fullscreen = false; tuning = false } }
+    BackHandler(fullscreen || tuning || crowdOpen) {
+        if (crowdOpen) crowdOpen = false else if (tuning) tuning = false else fullscreen = false
+    }
     MaterialTheme(colorScheme = darkColorScheme(primary = Lilac, secondary = Mint, background = Ink, surface = Panel, onSurface = Color.White)) {
         BoxWithConstraints(Modifier.fillMaxSize().background(Ink)) {
             val landscape = maxWidth > maxHeight
             AndroidView(
                 factory = { createSurface().also { surface = it } },
-                update = { it.update(settings) },
+                update = { it.update(settings); it.updateCrowd(crowd) },
                 modifier = Modifier.fillMaxSize()
                     .semantics { contentDescription = "${settings.scene.title} visualizer. Drag to move the scene." }
                     .pointerInput(fullscreen) { detectTapGestures { if (fullscreen) fullscreen = false } }
@@ -78,7 +84,7 @@ fun PrismApp(
                         }
                     }
             )
-            AnimatedVisibility(!fullscreen && !tuning, enter = fadeIn(), exit = fadeOut()) {
+            AnimatedVisibility(!fullscreen && !tuning && !crowdOpen, enter = fadeIn(), exit = fadeOut()) {
                 Box(Modifier.fillMaxSize()) {
                     Box(Modifier.fillMaxWidth().height(210.dp).background(Brush.verticalGradient(listOf(Ink.copy(alpha = 0.9f), Color.Transparent))))
                     Column(Modifier.align(Alignment.TopStart).safeDrawingPadding().padding(horizontal = 24.dp, vertical = 18.dp)) {
@@ -87,9 +93,9 @@ fun PrismApp(
                             Spacer(Modifier.width(10.dp))
                             Text("PRISM", color = Color.White, fontSize = 19.sp, letterSpacing = 5.sp, fontWeight = FontWeight.SemiBold)
                             Spacer(Modifier.weight(1f))
-                            StatusPill(if (settings.paused) "PAUSED" else if (!settings.audioEnabled) "AMBIENT" else if (status.running) "AUDIO ON" else "AUDIO READY", if (status.running) Mint else Lilac)
+                            StatusPill(if (crowdStatus.connected) "CROWD " + crowdStatus.phase.uppercase() else if (settings.paused) "PAUSED" else if (!settings.audioEnabled) "AMBIENT" else if (status.running) "AUDIO ON" else "AUDIO READY", if (status.running || crowdStatus.phase == "Ready") Mint else Lilac)
                         }
-                        if (!landscape && !settings.audioEnabled) {
+                        if (!landscape && !settings.audioEnabled && !crowdStatus.connected) {
                             Spacer(Modifier.height(if (recordingState.busy) 82.dp else 34.dp))
                             Text(settings.scene.title, color = Color.White, fontSize = 38.sp, fontWeight = FontWeight.Light, letterSpacing = (-1).sp)
                             Spacer(Modifier.height(5.dp))
@@ -101,34 +107,38 @@ fun PrismApp(
                     Column(panelModifier.background(Brush.verticalGradient(listOf(Color.Transparent, Ink.copy(alpha = 0.95f), Ink)))) {
                         Spacer(Modifier.height(if (landscape) 8.dp else 42.dp))
                         Column(Modifier.navigationBarsPadding().verticalScroll(rememberScrollState()).padding(bottom = 16.dp)) {
-                            if (settings.audioEnabled) {
+                            if (settings.audioEnabled && (!crowdStatus.connected || crowdStatus.source)) {
                                 AudioPanel(settings.source, status, connecting, { onChange(settings.copy(source = it)) }, onConnect, onDisconnect, recordingState.busy)
                                 Box(Modifier.padding(horizontal = 24.dp)) {
                                     SongMonitor(songAssistant) { tuningTab = "Song"; tuning = true }
                                 }
                                 Spacer(Modifier.height(20.dp))
                             }
-                            Row(Modifier.padding(horizontal = 24.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                Text("PATTERNS", color = Muted, fontSize = 10.sp, letterSpacing = 2.sp, fontWeight = FontWeight.SemiBold)
-                                Spacer(Modifier.weight(1f))
-                                Text("React to audio", color = Color.White, fontSize = 12.sp)
-                                Spacer(Modifier.width(10.dp))
-                                Switch(settings.audioEnabled, { onChange(settings.copy(audioEnabled = it)) },
-                                    Modifier.semantics { contentDescription = "React to audio" })
-                            }
-                            Spacer(Modifier.height(12.dp))
-                            LazyRow(contentPadding = PaddingValues(horizontal = 24.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                items(Scene.entries) { scene ->
-                                    SceneCard(scene, scene == settings.scene) { onChange(settings.copy(scene = scene, paused = false)) }
+                            if (!crowdStatus.connected) {
+                                Row(Modifier.padding(horizontal = 24.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                    Text("PATTERNS", color = Muted, fontSize = 10.sp, letterSpacing = 2.sp, fontWeight = FontWeight.SemiBold)
+                                    Spacer(Modifier.weight(1f))
+                                    Text("React to audio", color = Color.White, fontSize = 12.sp)
+                                    Spacer(Modifier.width(10.dp))
+                                    Switch(settings.audioEnabled, { onChange(settings.copy(audioEnabled = it)) },
+                                        Modifier.semantics { contentDescription = "React to audio" })
                                 }
+                                Spacer(Modifier.height(12.dp))
+                                LazyRow(contentPadding = PaddingValues(horizontal = 24.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    items(Scene.entries) { scene ->
+                                        SceneCard(scene, scene == settings.scene) { onChange(settings.copy(scene = scene, paused = false)) }
+                                    }
+                                }
+                                Spacer(Modifier.height(20.dp))
+                            } else {
+                                Text(crowdStatus.message, Modifier.padding(horizontal = 24.dp, vertical = 16.dp), color = Color.White, fontSize = 13.sp)
                             }
-                            Spacer(Modifier.height(20.dp))
                             Row(Modifier.fillMaxWidth().padding(horizontal = 24.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                                SmallAction(if (settings.paused) "Play" else "Pause", if (settings.paused) "play" else "pause") { onChange(settings.copy(paused = !settings.paused)) }
-                                OutlinedButton(onClick = { tuningTab = "Geometry"; tuning = true }, modifier = Modifier.weight(1f).height(48.dp), shape = RoundedCornerShape(16.dp), border = BorderStroke(1.dp, Color.White.copy(alpha = 0.18f)), contentPadding = PaddingValues(horizontal = 14.dp)) {
+                                if (!crowdStatus.connected) SmallAction(if (settings.paused) "Play" else "Pause", if (settings.paused) "play" else "pause") { onChange(settings.copy(paused = !settings.paused)) }
+                                OutlinedButton(onClick = { if (crowdStatus.connected) crowdOpen = true else { tuningTab = "Geometry"; tuning = true } }, modifier = Modifier.weight(1f).height(48.dp), shape = RoundedCornerShape(16.dp), border = BorderStroke(1.dp, Color.White.copy(alpha = 0.18f)), contentPadding = PaddingValues(horizontal = 14.dp)) {
                                     Glyph("tune", Modifier.size(18.dp), Color.White)
                                     Spacer(Modifier.width(9.dp))
-                                    Text("Tune", color = Color.White, fontSize = 13.sp)
+                                    Text(if (crowdStatus.connected) "Crowd" else "Tune", color = Color.White, fontSize = 13.sp)
                                 }
                                 OutlinedButton(onClick = { fullscreen = true }, modifier = Modifier.weight(1.3f).height(48.dp), shape = RoundedCornerShape(16.dp), border = BorderStroke(1.dp, Lilac.copy(alpha = 0.7f)), contentPadding = PaddingValues(horizontal = 14.dp), colors = ButtonDefaults.outlinedButtonColors(containerColor = Lilac.copy(alpha = 0.2f), contentColor = Color.White)) {
                                     Glyph("expand", Modifier.size(17.dp), Color.White)
@@ -136,8 +146,11 @@ fun PrismApp(
                                     Text("Immerse", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                                 }
                             }
-                            RecordingLauncher(recordingState, settings.source, onRecord, onOpenRecording, onShareRecording)
-                            if (!landscape) {
+                            if (!crowdStatus.connected) {
+                                TextButton(onClick = { crowdOpen = true }, Modifier.align(Alignment.CenterHorizontally)) { Text("Join crowd show") }
+                                RecordingLauncher(recordingState, settings.source, onRecord, onOpenRecording, onShareRecording)
+                            }
+                            if (!landscape && !crowdStatus.connected) {
                                 Text("DRAG TO BEND THE LIGHT", Modifier.fillMaxWidth(), textAlign = androidx.compose.ui.text.style.TextAlign.Center, fontSize = 9.sp, letterSpacing = 2.sp, color = Muted.copy(alpha = 0.65f))
                             }
                         }
@@ -145,11 +158,14 @@ fun PrismApp(
                 }
             }
             if (fullscreen) {
+                if (crowdStatus.connected) Text(crowdStatus.phase, Modifier.align(Alignment.TopEnd).safeDrawingPadding().padding(12.dp),
+                    color = Color.White.copy(alpha = .6f), fontSize = 10.sp)
                 var hintVisible by remember { mutableStateOf(true) }
                 LaunchedEffect(Unit) { delay(2400); hintVisible = false }
                 if (hintVisible) Text("Tap anywhere to return", Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(24.dp).clip(CircleShape).background(Ink.copy(alpha = 0.7f)).padding(horizontal = 18.dp, vertical = 10.dp), color = Color.White, fontSize = 12.sp)
             }
             if (renderError != null) Text(renderError, Modifier.align(Alignment.Center).padding(30.dp).background(Panel).padding(20.dp), color = Color.White)
+            if (crowdOpen) CrowdOverlay(crowd, crowdStatus, crowdInvitation, onCrowdJoin, onCrowdLeave, onCrowdBrightness) { crowdOpen = false }
             if (tuning) TuningOverlay(
                 settings, status, connecting, onChange, onConnect, onDisconnect,
                 fps = { surface?.engine?.measuredFps ?: 0f }, dismiss = { tuning = false }, captureLocked = recordingState.busy,

@@ -4,6 +4,10 @@ import android.content.Context
 import android.opengl.GLES30.*
 import android.opengl.GLSurfaceView
 import android.os.SystemClock
+import android.os.Build
+import android.view.Choreographer
+import android.opengl.EGL14
+import android.opengl.EGLExt
 import android.util.Log
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -32,6 +36,55 @@ class PrismSurface @JvmOverloads constructor(context: Context, onError: (String)
     fun update(settings: VisualSettings) {
         engine.settings = settings
         resizeBuffer(width, height, settings.batterySaver)
+    }
+    private var cancelFrames: (() -> Unit)? = null
+    private var resumed = true
+    fun updateCrowd(client: CrowdClient) {
+        engine.crowd = client
+        val following = client.connected
+        renderMode = if (following) RENDERMODE_WHEN_DIRTY else RENDERMODE_CONTINUOUSLY
+        if (following && resumed && cancelFrames == null) startFrames()
+        if (!following) { cancelFrames?.invoke(); cancelFrames = null }
+    }
+    private fun startFrames() {
+        val choreographer = Choreographer.getInstance()
+        if (Build.VERSION.SDK_INT >= 33) {
+            val callback = object : Choreographer.VsyncCallback {
+                override fun onVsync(data: Choreographer.FrameData) {
+                    if (cancelFrames == null) return
+                    engine.expectedPresentationNs = data.preferredFrameTimeline.expectedPresentationTimeNanos
+                    requestRender()
+                    choreographer.postVsyncCallback(this)
+                }
+            }
+            cancelFrames = { choreographer.removeVsyncCallback(callback) }
+            choreographer.postVsyncCallback(callback)
+        } else {
+            val callback = object : Choreographer.FrameCallback {
+                override fun doFrame(frameTimeNanos: Long) {
+                    if (cancelFrames == null) return
+                    val hz = display?.refreshRate?.takeIf { it > 0 } ?: 60f
+                    engine.expectedPresentationNs = frameTimeNanos + (1e9 / hz).toLong()
+                    requestRender()
+                    choreographer.postFrameCallback(this)
+                }
+            }
+            cancelFrames = { choreographer.removeFrameCallback(callback) }
+            choreographer.postFrameCallback(callback)
+        }
+    }
+    override fun onPause() {
+        resumed = false; cancelFrames?.invoke(); cancelFrames = null
+        super.onPause()
+    }
+    override fun onResume() {
+        super.onResume()
+        resumed = true
+        engine.crowd?.let { updateCrowd(it) }
+    }
+    override fun onDetachedFromWindow() {
+        cancelFrames?.invoke(); cancelFrames = null
+        super.onDetachedFromWindow()
     }
     internal fun beginRecording(encoder: SessionEncoder, started: () -> Unit) = queueEvent {
         try {
@@ -65,6 +118,8 @@ class PrismRenderer(private val context: Context, private val onError: (String) 
     private var viewportWidth = 1
     private var viewportHeight = 1
     @Volatile var settings = VisualSettings()
+    @Volatile var crowd: CrowdClient? = null
+    @Volatile var expectedPresentationNs = 0L
     @Volatile var touchX = 0f
     @Volatile var touchY = 0f
     private var program = 0
@@ -142,8 +197,18 @@ class PrismRenderer(private val context: Context, private val onError: (String) 
         val started = SystemClock.elapsedRealtimeNanos()
         val dt = if (previousFrame == 0L) 0f else ((started - previousFrame) / 1e9f).coerceIn(0f, 0.05f)
         previousFrame = started
-        val s = settings
-        if (!s.paused) {
+        val following = crowd?.connected == true
+        val presentationNs = maxOf(System.nanoTime(), expectedPresentationNs)
+        val shared = if (following) crowd?.frame(presentationNs) else null
+        val s = shared?.cue?.settings ?: settings
+        if (following && shared != null) {
+            val seconds = (shared.time / 1000).toFloat()
+            time = seconds * s.speed
+            rotation = seconds * s.rotation * .3f
+            colorPhase = seconds * s.colorSpeed
+            morphTime = seconds * s.morph
+            touchSmoothX = 0f; touchSmoothY = 0f
+        } else if (!following && !s.paused) {
             time += dt * s.speed
             rotation += dt * s.rotation * 0.3f
             colorPhase += dt * s.colorSpeed
@@ -151,14 +216,23 @@ class PrismRenderer(private val context: Context, private val onError: (String) 
             touchSmoothX += (touchX - touchSmoothX) * 0.07f
             touchSmoothY += (touchY - touchSmoothY) * 0.07f
         }
-        if (s.scene.id != currentMode) {
+        if (following && shared != null) {
+            currentMode = s.scene.id; previousMode = shared.cue.previousScene
+            transition = ((shared.time - shared.cue.transitionAt) / 600).toFloat().coerceIn(0f, 1f)
+        } else if (s.scene.id != currentMode) {
             previousMode = if (currentMode < 0) s.scene.id else currentMode
             currentMode = s.scene.id
             transition = 0f
         }
-        transition = min(1f, transition + dt * 1.7f)
-        if (program != 0) {
-            val motion = beatMotion.update(AudioEngine.rhythm, AudioEngine.levels, System.nanoTime()/1e9, s)
+        if (!following) transition = min(1f, transition + dt * 1.7f)
+        if (following) {
+            EGLExt.eglPresentationTimeANDROID(EGL14.eglGetCurrentDisplay(), EGL14.eglGetCurrentSurface(EGL14.EGL_DRAW), presentationNs)
+        }
+        if (following && (shared == null || shared.dark || shared.cue.diagnostic)) {
+            val white = if (shared != null && !shared.dark) shared.motion.flash else 0f
+            glClearColor(white, white, white, 1f); glClear(GL_COLOR_BUFFER_BIT)
+        } else if (program != 0) {
+            val motion = shared?.motion ?: beatMotion.update(AudioEngine.rhythm, AudioEngine.levels, System.nanoTime()/1e9, s)
             glUseProgram(program)
             glUniform1f(uniforms.getValue("uTime"), time)
             glUniform1f(uniforms.getValue("uRotation"), rotation)
@@ -202,10 +276,11 @@ class PrismRenderer(private val context: Context, private val onError: (String) 
         frameCounter++
         if (started - statsStart > 2_000_000_000L) {
             measuredFps = frameCounter * 1e9f / (started - statsStart)
+            crowd?.measuredFps = measuredFps
             statsStart = started; frameCounter = 0
         }
         val frameMs = if (s.paused && recording == null) 100L else if (s.batterySaver) 33L else 16L
         val elapsedMs = (SystemClock.elapsedRealtimeNanos() - started) / 1_000_000L
-        if (elapsedMs < frameMs) SystemClock.sleep(frameMs - elapsedMs)
+        if (!following && elapsedMs < frameMs) SystemClock.sleep(frameMs - elapsedMs)
     }
 }
