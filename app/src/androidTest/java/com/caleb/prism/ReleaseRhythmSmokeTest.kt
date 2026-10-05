@@ -122,7 +122,15 @@ class ReleaseRhythmSmokeTest {
                 assertTrue("Release fullscreen label remains visible while recording",readable>80)
             } finally { screen.recycle() }
             click("Stop recording")
-            assertTrue("Signed release saves its recording", device.wait(Until.hasObject(By.text("Last video")),10000))
+            val savedDeadline=SystemClock.elapsedRealtime()+10000
+            while (SystemClock.elapsedRealtime()<savedDeadline) {
+                instrumentation.uiAutomation.clearCache()
+                if (device.hasObject(By.text("Last video"))) break
+                // Song/phrase status can make the main controls taller than one screen.
+                device.findObject(By.scrollable(true))?.scroll(Direction.DOWN,.35f)
+                SystemClock.sleep(200)
+            }
+            assertTrue("Signed release exposes its saved recording",device.hasObject(By.text("Last video")))
             val newVideos=device.executeShellCommand("ls -1 /sdcard/Movies/Prism").lines().filter { it !in previousVideos && it.endsWith(".mp4") }
             assertEquals("One new release recording",1,newVideos.size)
             File(evidence,"release-recording-file.txt").writeText(newVideos.single().trim()+"\n")

@@ -46,9 +46,10 @@ private val ReadableText = TextStyle(color = Color.White, shadow = Shadow(Color.
 fun TuningOverlay(
     s: VisualSettings, status: CaptureStatus, connecting: Boolean,
     change: (VisualSettings) -> Unit, connect: () -> Unit, disconnect: () -> Unit,
-    fps: () -> Float, dismiss: () -> Unit, captureLocked: Boolean = false
+    fps: () -> Float, dismiss: () -> Unit, captureLocked: Boolean = false,
+    songAssistant: SongAssistant, initialTab: String = "Geometry"
 ) {
-    var tab by rememberSaveable { mutableStateOf("Geometry") }
+    var tab by rememberSaveable { mutableStateOf(initialTab) }
     var hidden by rememberSaveable { mutableStateOf(false) }
     var activeControl by remember { mutableStateOf<String?>(null) }
     var notice by remember { mutableStateOf("") }
@@ -74,7 +75,7 @@ fun TuningOverlay(
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val landscape = maxWidth > maxHeight
         val controlsWidth = if (landscape) Modifier.width(330.dp) else Modifier.fillMaxWidth()
-        val controlsHeight = if (landscape) maxHeight - 165.dp else maxHeight * 0.43f
+        val controlsHeight = (if (landscape) maxHeight - 165.dp else maxHeight * 0.43f).coerceAtLeast(96.dp)
         if (hidden) {
             TextButton(onClick = { hidden = false }, modifier = Modifier.align(Alignment.BottomEnd).navigationBarsPadding().padding(16.dp)
                 .clip(CircleShape).background(OverlayInk.copy(alpha = 0.4f))) {
@@ -91,9 +92,9 @@ fun TuningOverlay(
                 TextButton(onClick = dismiss) { Text("Done", style = ReadableText, color = OverlayAccent, fontSize = 12.sp) }
             }
             Column(Modifier.align(if (landscape) Alignment.BottomEnd else Alignment.BottomCenter)
-                .then(controlsWidth).navigationBarsPadding().padding(horizontal = 20.dp).padding(bottom = 8.dp)) {
+                .then(controlsWidth).navigationBarsPadding().imePadding().padding(horizontal = 20.dp).padding(bottom = 8.dp)) {
                 Row(Modifier.fillMaxWidth().alpha(otherAlpha), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    val tabs = listOf("Geometry", "Color", "Motion", "Audio")
+                    val tabs = listOf("Geometry", "Color", "Motion", "Audio", "Song")
                     tabs.forEach { name ->
                         TextButton(onClick = { tab = name }, modifier = Modifier.weight(1f).height(44.dp)
                             .background(if (tab == name) OverlayInk.copy(alpha = 0.58f) else OverlayInk.copy(alpha = 0.18f), CircleShape),
@@ -110,6 +111,7 @@ fun TuningOverlay(
                             OverlaySlider(label, value, range, formatted, steps, activeControl, ::editing, set)
                         }
                         when (tab) {
+                            "Song" -> SongControls(songAssistant)
                             "Geometry" -> {
                                 val detail = when (s.scene) {
                                     Scene.KALEIDO -> "${3 + (s.complexity * 6).toInt()} levels"
