@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Prism · Crowd</title>
+<style>
+:root{color-scheme:dark;font:15px system-ui,sans-serif;background:#090b13;color:#f0f0fa}
+*{box-sizing:border-box}body{max-width:1180px;margin:0 auto;padding:30px 24px}
+header{display:flex;justify-content:space-between;align-items:center;margin-bottom:26px}
+h1{font-size:23px;letter-spacing:5px;font-weight:600;margin:0}h2{font-size:17px;margin:0 0 18px}
+p{line-height:1.5;color:#aeb5cd}.tag{font-size:12px;letter-spacing:2px;color:#cbb6ff}
+main{display:grid;grid-template-columns:1.4fr 1fr;gap:20px}.card{border:1px solid #292d43;background:#101320;border-radius:18px;padding:22px}
+.wide{grid-column:1/-1}.row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}.space{justify-content:space-between}
+label{display:flex;flex-direction:column;gap:7px;color:#aeb5cd;font-size:13px;flex:1;min-width:110px}
+button,input,select,textarea{font:inherit;border:1px solid #353b54;background:#171c2c;color:#fff;border-radius:9px;padding:10px 12px}
+input,select{width:100%}input[type=range]{padding:0;accent-color:#cbb6ff}
+button{cursor:pointer}button:hover{border-color:#cbb6ff}.primary{background:#cbb6ff;color:#13101e;border-color:#cbb6ff;font-weight:650}
+.stop{background:#582534;border-color:#b65d74}button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid #82e8cf;outline-offset:3px}
+.controls{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin:20px 0}
+.number{font-size:42px;letter-spacing:-1px;font-variant-numeric:tabular-nums}.muted{color:#aeb5cd}
+#qr{width:230px;max-width:100%;border-radius:8px;background:white;display:block;margin:20px auto}
+textarea{width:100%;font-size:11px;resize:vertical}table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{text-align:left;padding:12px 8px;border-bottom:1px solid #292d43}th{color:#aeb5cd;font-weight:500}
+.ready{color:#82e8cf}.coasting{color:#f7c976}.unsynced{color:#f39caf}.notice{min-height:24px;color:#f7c976}
+small{color:#aeb5cd;font-size:12px}#summary{margin-bottom:15px}details{margin-top:20px}summary{cursor:pointer;color:#cbb6ff}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:18px}.hidden{display:none}
+@media(max-width:800px){main{grid-template-columns:1fr}.wide{grid-column:auto}body{padding:20px 14px}.table-wrap{overflow:auto}}
+</style></head>
+<body>
+<header><h1>PRISM <span class="tag">CROWD</span></h1><button id="blackout" class="stop">Blackout</button></header>
+<p id="error" class="notice" role="status"></p>
+<main>
+<section class="card"><div class="row space"><h2>Show clock</h2><span id="playing" class="tag">STOPPED</span></div>
+<div class="row space"><div><span id="tempo" class="number">120</span> <span class="muted">BPM</span></div><div id="position" class="muted">Waiting to start</div></div>
+<div class="controls">
+<label>Timing source<select id="source"><option value="manual">Manual / tap tempo</option><option value="audio">Prism audio input</option></select></label>
+<label>Tempo<input id="bpm" type="number" min="40" max="240" step=".1" value="120"></label>
+<label>Beats per bar<select id="meter"><option>4</option><option>3</option></select></label>
+<label>Bars per phrase<select id="phraseBars"><option>8</option><option selected>16</option><option>32</option></select></label>
+</div>
+<div class="row"><button class="primary" id="start">Start show</button><button id="tap">Tap tempo</button><button id="align">Bar / phrase starts here</button></div>
+<p id="music">Manual timing</p><p id="queued"></p>
+</section>
+<section class="card"><h2>Join the show</h2>
+<label>Show network<select id="interface"></select></label>
+<p id="capacity">Connect phones to the laptop hotspot, then scan this code.</p>
+<div class="row"><button id="viewers" class="primary">Audience</button><button id="audioRole">Audio input phone</button></div>
+<img id="qr" alt="Prism show invitation QR code"><small id="roleHelp">Scan with your phone camera and open Prism.</small>
+<details><summary>Copy invitation instead</summary><textarea id="invite" rows="3" readonly aria-label="Show invitation"></textarea><button id="copy">Copy invitation</button></details>
+</section>
+<section class="card wide"><h2>Look and accents</h2>
+<div class="grid">
+<label>Display<select id="mode"><option value="flash">Timing test: white flashes</option><option value="scene">Prism scene</option></select></label>
+<label>Pattern<select id="scene"><option value="0">Aurora</option><option value="1" selected>Kaleido</option><option value="2">Wormhole</option><option value="6">Julia</option></select></label>
+<label>Palette<select id="palette"><option value="0">Spectrum</option><option value="1">Ember</option><option value="2">Tidal</option><option value="3">Acid</option></select></label>
+<label>Flash interval<select id="flashEvery"><option value="4">First beat of each bar</option><option value="1">Quarter note</option><option value=".5">Eighth note</option><option value=".25">Sixteenth note</option></select></label>
+<label>Flash duration (ms)<input id="flashMs" type="number" min="16" max="100" value="50"></label>
+<label>Downbeat inversion fade (ms)<input id="invertMs" type="number" min="60" max="400" value="180"></label>
+</div>
+<details><summary>Pattern settings</summary><div id="sliders" class="grid"></div></details>
+<div class="row" style="margin-top:22px"><button class="primary" id="apply">Queue settings</button><small>Changes start together at a scheduled boundary.</small></div>
+</section>
+<section class="card wide"><div class="row space"><h2>Phones</h2><button id="export">Export measurements</button></div>
+<div id="summary" class="muted">No phones connected</div>
+<div class="table-wrap"><table><thead><tr><th>Device</th><th>Status</th><th>Clock estimate</th><th>FPS</th><th>Missed flash windows</th></tr></thead><tbody id="phones"></tbody></table></div>
+<p><small>Clock uncertainty and missed render windows are software estimates. Measure actual screen flashes with a camera or photodiodes before claiming optical synchronization.</small></p>
+</section>
+</main><script src="/app.js"></script></body></html>

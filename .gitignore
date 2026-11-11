@@ -10,3 +10,5 @@ review/
 .idea/
 __pycache__/
 *.pyc
+node_modules/
+controller/runtime/
