@@ -2,11 +2,11 @@
 
 A native Android psychedelic visualizer. Kotlin, Jetpack Compose, and four original OpenGL ES 3 shaders. Android 10 or newer.
 
-## Crowd mode preview
+## Crowd mode
 
-The [**1.8.0 preview**](https://github.com/xklob/prism/releases/tag/v1.8.0-preview.1) adds a Windows controller that uses the computer's own Wi-Fi card through Mobile Hotspot. Install the preview APK on the phones, extract the Windows controller ZIP, and double-click **Start-Prism.cmd**. The local dashboard provides audience invitations, a shared tempo and bar clock, all four patterns, scheduled flashes and color inversion, and per-phone timing diagnostics.
+The [**1.8.0 release**](https://github.com/xklob/prism/releases/tag/v1.8.0) adds a Windows controller that uses the computer's own Wi-Fi card through Mobile Hotspot. Install the APK on the phones, extract the Windows controller ZIP, and double-click **Start-Prism.cmd**. The local dashboard provides audience invitations, a shared tempo and bar clock, all four patterns, scheduled flashes and color inversion, and per-phone timing diagnostics.
 
-See [the controller guide](controller/README.md) for setup, audio input, timing limits, and testing. Crowd mode is being developed on a feature branch. Software clock estimates do not establish physical synchronization between different phone screens.
+See [the controller guide](controller/README.md) for setup, audio input, timing limits, and testing. Physical multi-phone timing and the laptop's adapter and firewall setup still need field testing. Software clock estimates do not establish physical synchronization between different phone screens.
 
 ## Scenes
 
@@ -90,7 +90,7 @@ Catalog BPM helps resolve competing tempo candidates, but does not increase beat
 
 Phrase tracking is local and works without song assistance. Choose an **8**, **16**, or **32 bar** hypothesis. Sustained changes in whole-bar energy and bass/mid/treble balance suggest an origin; repeated changes at the selected interval increase evidence. Until a change is observed, Prism says it is listening for a phrase change. These are explicitly labeled **estimated**, not known song structure. Because a whole bar must be observed, automatic alignment can arrive one bar late. A section is not necessarily one phrase, and unusual arrangements can defeat this heuristic.
 
-Tap **Phrase starts here** on a known boundary to align both the first downbeat and the phrase counter manually. **Auto phrase** clears this override and resumes structural inference. Phrase length changes, unstable timing, and discontinuities clear the old origin. The numbered counter and confidence are visible in the audio monitor and transparent Song overlay. Phrase estimates do not trigger extra strobes or override existing beat/bar effects. Precomputed full-song structure analysis is not included in this preview.
+Tap **Phrase starts here** on a known boundary to align both the first downbeat and the phrase counter manually. **Auto phrase** clears this override and resumes structural inference. Phrase length changes, unstable timing, and discontinuities clear the old origin. The numbered counter and confidence are visible in the audio monitor and transparent Song overlay. Phrase estimates do not trigger extra strobes or override existing beat/bar effects. Precomputed full-song structure analysis is not included.
 
 Beat/downbeat inference uses [BeatNet](https://github.com/mjhydri/BeatNet) models 1 and 3 by Mojtaba Heydari and contributors, licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), converted to ONNX with explicit recurrent state. Prism supplies its own Kotlin frontend and musical tracker. [ONNX Runtime](https://github.com/microsoft/onnxruntime) is MIT-licensed. Attribution, licenses, and model provenance ship in `app/src/main/assets/rhythm/`; reproducible conversion instructions are in [tools/beatnet](tools/beatnet/README.md).
 
