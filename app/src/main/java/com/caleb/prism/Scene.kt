@@ -11,19 +11,28 @@ enum class Scene(val id: Int, val title: String, val subtitle: String, val accen
     WORMHOLE(2, "Wormhole", "An infinite tunnel of engraved geometry", Color(0xFF7FDCEB)),
     JULIA(6, "Julia", "Explore the edge of an evolving fractal", Color(0xFFFFD38E)),
     MANDELBROT(7, "Mandelbrot", "A slow dive into the fractal boundary", Color(0xFF9ECFFF)),
-    EQUALIZER(8, "Equalizer", "Live frequency bands from your audio", Color(0xFF82E8CF));
+    EQUALIZER(8, "Equalizer", "Live frequency bands from your audio", Color(0xFF82E8CF)),
+    KALEIDOSCOPE(9, "Kaleidoscope", "Mirrored fractal chambers woven from light", Color(0xFFFFA5C8));
 
     val detailLabel: String get() = when (this) {
         AURORA -> "Contour density"; KALEIDO -> "Recursion depth"; WORMHOLE -> "Tunnel detail"
-        JULIA, MANDELBROT -> "Fractal iterations"; EQUALIZER -> "Frequency bands"
+        JULIA, MANDELBROT -> "Fractal iterations"; EQUALIZER -> "Frequency bands"; KALEIDOSCOPE -> "Fractal detail"
     }
     val symmetryLabel: String get() = when (this) {
         AURORA -> "Flow harmonics"; KALEIDO -> "Mirror segments"; WORMHOLE -> "Tunnel facets"
-        JULIA, MANDELBROT, EQUALIZER -> "Symmetry"
+        JULIA, MANDELBROT, EQUALIZER, KALEIDOSCOPE -> "Symmetry"
     }
     val distortionLabel: String get() = when (this) {
-        WORMHOLE -> "Tunnel twist"; JULIA -> "Fractal shape"; MANDELBROT -> "Zoom depth"
+        WORMHOLE -> "Tunnel twist"; JULIA, KALEIDOSCOPE -> "Fractal shape"; MANDELBROT -> "Zoom depth"
         EQUALIZER -> "Bar spacing"; else -> "Distortion"
+    }
+    val shapeTab: String get() = when (this) {
+        AURORA -> "Weave"; KALEIDO -> "Mirrors"; WORMHOLE -> "Tunnel"
+        JULIA -> "Fractal"; MANDELBROT -> "Zoom"; EQUALIZER -> "Bars"; KALEIDOSCOPE -> "Chambers"
+    }
+    val motionTab: String get() = when (this) {
+        AURORA -> "Flow"; JULIA -> "Evolution"; MANDELBROT -> "Journey"
+        EQUALIZER -> "Response"; else -> "Motion"
     }
 }
 
@@ -75,15 +84,34 @@ data class VisualSettings(
     val eqPeakHold: Float = .6f,
     val eqMirror: Boolean = false,
     val eqRadial: Boolean = false,
-    val eqSegments: Boolean = true
+    val eqSegments: Boolean = true,
+    val kaleidoscopeShape: Int = 0,
+    val kaleidoscopeSpace: Float = 1f
 ) {
-    fun randomLook(random: Random = Random.Default) = copy(
+    fun randomLook(random: Random = Random.Default): VisualSettings {
+        val variation = copy(
         palette = Palette.entries[random.nextInt(Palette.entries.size)],
         complexity = random.nextFloat() * 0.4f + 0.6f,
         symmetry = random.nextInt(4, 17), distortion = random.nextFloat() * 1.3f,
         zoom = random.nextFloat() * 0.9f + 0.75f, hue = random.nextFloat(),
         rotation = random.nextFloat() * 0.7f - 0.35f, morph = random.nextFloat() * 0.7f + 0.15f
-    )
+        )
+        return when (scene) {
+            Scene.EQUALIZER -> variation.copy(
+                eqBuckets = listOf(16, 24, 32, 48, 64).random(random), eqGain = .7f + random.nextFloat() * .9f,
+                eqSpacing = .08f + random.nextFloat() * .32f, eqFalloff = .15f + random.nextFloat() * .4f,
+                eqPeakHold = .25f + random.nextFloat(), eqMirror = random.nextBoolean(),
+                eqRadial = random.nextBoolean(), eqSegments = random.nextBoolean(), rotation = 0f
+            )
+            Scene.MANDELBROT -> variation.copy(complexity = .75f + random.nextFloat() * .25f,
+                rotation = 0f, morph = 0f, speed = .25f + random.nextFloat() * .5f, zoom = .8f + random.nextFloat() * .5f)
+            Scene.JULIA -> variation.copy(rotation = (random.nextFloat() - .5f) * .1f, morph = random.nextFloat() * .3f)
+            Scene.KALEIDOSCOPE -> variation.copy(kaleidoscopeShape = random.nextInt(3),
+                kaleidoscopeSpace = .6f + random.nextFloat() * .9f, lineWidth = .8f + random.nextFloat() * .7f,
+                rotation = (random.nextFloat() - .5f) * .15f, morph = .1f + random.nextFloat() * .4f)
+            else -> variation
+        }
+    }
     fun resetLook() = defaults(scene).copy(source = source, audioEnabled = audioEnabled, sensitivity = sensitivity,
         beatsPerBar = beatsPerBar, syncOffsetMs = syncOffsetMs, batterySaver = batterySaver, paused = paused,
         tabletMonitor = tabletMonitor)
@@ -95,6 +123,9 @@ data class VisualSettings(
             Scene.JULIA -> VisualSettings(scene = scene, complexity = 0.8f, distortion = 0.65f, rotation = 0.025f, morph = 0.15f)
             Scene.MANDELBROT -> VisualSettings(scene = scene, complexity = .85f, distortion = .9f, rotation = 0f, morph = 0f, speed = .5f)
             Scene.EQUALIZER -> VisualSettings(scene = scene, audioEnabled = true, rotation = 0f, morph = 0f)
+            Scene.KALEIDOSCOPE -> VisualSettings(scene = scene, complexity = .65f, distortion = .55f,
+                rotation = 0f, morph = .28f, speed = .55f, lineWidth = 1f, colorSpeed = .025f,
+                beatImpact = .55f, barImpact = .5f, downbeatFlash = 0f, downbeatInvert = 0f)
             else -> VisualSettings(scene = scene)
         }
     }
@@ -150,7 +181,9 @@ class SettingsStore(context: Context) {
             eqFalloff = f("eqFalloff", d.eqFalloff, .08f, 1.2f), eqPeakHold = f("eqPeakHold", d.eqPeakHold, 0f, 2f),
             eqMirror = prefs.getBoolean(prefix + "eqMirror", d.eqMirror),
             eqRadial = prefs.getBoolean(prefix + "eqRadial", d.eqRadial),
-            eqSegments = prefs.getBoolean(prefix + "eqSegments", d.eqSegments)
+            eqSegments = prefs.getBoolean(prefix + "eqSegments", d.eqSegments),
+            kaleidoscopeShape = prefs.getInt(prefix + "kaleidoscopeShape", d.kaleidoscopeShape).coerceIn(0, 2),
+            kaleidoscopeSpace = f("kaleidoscopeSpace", d.kaleidoscopeSpace, .4f, 2f)
         )
     }
     fun save(s: VisualSettings) = write(s, "scene.${s.scene.name}.", shared = true)
@@ -158,7 +191,7 @@ class SettingsStore(context: Context) {
         val editor = prefs.edit().putBoolean(prefix + "saved", true).putInt(prefix + "palette", s.palette.ordinal)
             .putInt(prefix + "symmetry", s.symmetry).putInt(prefix + "eqBuckets", s.eqBuckets)
             .putBoolean(prefix + "eqMirror", s.eqMirror).putBoolean(prefix + "eqRadial", s.eqRadial)
-            .putBoolean(prefix + "eqSegments", s.eqSegments)
+            .putBoolean(prefix + "eqSegments", s.eqSegments).putInt(prefix + "kaleidoscopeShape", s.kaleidoscopeShape)
         for ((key, value) in listOf(
             "speed" to s.speed, "intensity" to s.intensity, "complexity" to s.complexity,
             "distortion" to s.distortion, "zoom" to s.zoom, "lineWidth" to s.lineWidth,
@@ -168,7 +201,8 @@ class SettingsStore(context: Context) {
             "pulseLength" to s.pulseLength, "textureAmount" to s.textureAmount,
             "downbeatFlash" to s.downbeatFlash, "downbeatInvert" to s.downbeatInvert, "invertFadeMs" to s.invertFadeMs,
             "audioAmount" to s.audioAmount, "eqGain" to s.eqGain, "eqSpacing" to s.eqSpacing,
-            "eqFalloff" to s.eqFalloff, "eqPeakHold" to s.eqPeakHold
+            "eqFalloff" to s.eqFalloff, "eqPeakHold" to s.eqPeakHold,
+            "kaleidoscopeSpace" to s.kaleidoscopeSpace
         )) editor.putFloat(prefix + key, value)
         if (shared) editor.putInt("scene", s.scene.id).putString("sceneName", s.scene.name)
             .putBoolean(prefix + "audioEnabled", s.audioEnabled).putInt("source", s.source.ordinal)

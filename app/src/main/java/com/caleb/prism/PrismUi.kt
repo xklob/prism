@@ -49,7 +49,7 @@ fun PrismApp(
     settings: VisualSettings, renderError: String?, connecting: Boolean,
     createSurface: () -> PrismSurface, onChange: (VisualSettings) -> Unit,
     onConnect: () -> Unit, onDisconnect: () -> Unit, onImmersive: (Boolean) -> Unit,
-    recording: SessionRecorder, onRecord: (AudioSource) -> Unit,
+    recording: SessionRecorder, onRecord: () -> Unit,
     onOpenRecording: (SavedRecording) -> Unit, onShareRecording: (SavedRecording) -> Unit,
     songAssistant: SongAssistant, crowd: CrowdClient, crowdInvitation: String,
     onCrowdJoin: (String, Boolean) -> Unit, onCrowdLeave: () -> Unit, onCrowdBrightness: (Float) -> Unit
@@ -58,7 +58,13 @@ fun PrismApp(
     var tuning by rememberSaveable { mutableStateOf(false) }
     var crowdOpen by rememberSaveable { mutableStateOf(false) }
     var tuningTab by rememberSaveable { mutableStateOf("Geometry") }
+    var appSettings by rememberSaveable { mutableStateOf(false) }
+    val controlsScroll = rememberScrollState()
+    var settingsMinimized by rememberSaveable { mutableStateOf(false) }
+    var timingMinimized by rememberSaveable { mutableStateOf(false) }
     var surface by remember { mutableStateOf<PrismSurface?>(null) }
+    var measuredFps by remember { mutableFloatStateOf(0f) }
+    LaunchedEffect(Unit) { while (true) { measuredFps = surface?.engine?.measuredFps ?: 0f; delay(500) } }
     val status by AudioEngine.status.collectAsStateWithLifecycle()
     val recordingState by recording.state.collectAsStateWithLifecycle()
     val crowdStatus by crowd.status.collectAsStateWithLifecycle()
@@ -92,26 +98,34 @@ fun PrismApp(
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                             PrismMark(Modifier.size(30.dp))
                             Spacer(Modifier.width(10.dp))
-                            Text("PRISM", color = Color.White, fontSize = 19.sp, letterSpacing = 5.sp, fontWeight = FontWeight.SemiBold)
+                            Column {
+                                Text("prism", color = Color.White, fontSize = 19.sp, letterSpacing = 5.sp, fontWeight = FontWeight.SemiBold)
+                                if (!crowdStatus.connected) Text(if (settings.paused) "PAUSED" else if (!settings.audioEnabled) "AMBIENT" else if (status.running) "AUDIO ON" else "AUDIO READY",
+                                    color = Muted, fontSize = 9.sp, letterSpacing = 1.sp)
+                            }
                             Spacer(Modifier.weight(1f))
-                            StatusPill(if (crowdStatus.connected) "CROWD " + crowdStatus.phase.uppercase() else if (settings.paused) "PAUSED" else if (!settings.audioEnabled) "AMBIENT" else if (status.running) "AUDIO ON" else "AUDIO READY", if (status.running || crowdStatus.phase == "Ready") Mint else Lilac)
+                            if (crowdStatus.connected) StatusPill("CROWD " + crowdStatus.phase.uppercase(), if (crowdStatus.phase == "Ready") Mint else Lilac)
                         }
                         if (!landscape && !settings.audioEnabled && !crowdStatus.connected) {
-                            Spacer(Modifier.height(if (recordingState.busy) 82.dp else 34.dp))
+                            Spacer(Modifier.height(34.dp))
                             Text(settings.scene.title, color = Color.White, fontSize = 38.sp, fontWeight = FontWeight.Light, letterSpacing = (-1).sp)
                             Spacer(Modifier.height(5.dp))
                             Text(settings.scene.subtitle, color = Color(0xFFCDD0E0), fontSize = 13.sp)
                         }
                     }
-                    val panelModifier = if (landscape || tablet) Modifier.align(Alignment.CenterEnd).width(if (tablet) 420.dp else 340.dp).fillMaxHeight().safeDrawingPadding().padding(top = 65.dp)
+                    val panelModifier = if (landscape || tablet) Modifier.align(Alignment.CenterEnd).width(if (tablet) 420.dp else 340.dp).fillMaxHeight().safeDrawingPadding().padding(top = 112.dp)
                         else Modifier.align(Alignment.BottomCenter).fillMaxWidth()
-                    Column(panelModifier.background(Brush.verticalGradient(listOf(Color.Transparent, Ink.copy(alpha = 0.95f), Ink)))) {
+                    if (!tablet || !settingsMinimized) Column(panelModifier.background(Brush.verticalGradient(listOf(Color.Transparent, Ink.copy(alpha = 0.95f), Ink)))) {
                         Spacer(Modifier.height(if (landscape) 8.dp else 42.dp))
-                        Column(Modifier.navigationBarsPadding().verticalScroll(rememberScrollState()).padding(bottom = 16.dp)) {
+                        Column(Modifier.navigationBarsPadding().verticalScroll(controlsScroll).padding(bottom = 16.dp)) {
+                            if (tablet && !crowdStatus.connected) TextButton(onClick = { settingsMinimized = true },
+                                modifier = Modifier.align(Alignment.End).padding(end = 16.dp).semantics { contentDescription = "Minimize settings" }) {
+                                Text("Minimize ›", color = Color.White, fontSize = 12.sp)
+                            }
                             if (settings.audioEnabled && (!crowdStatus.connected || crowdStatus.source)) {
                                 AudioPanel(settings.source, status, connecting, { onChange(settings.copy(source = it)) }, onConnect, onDisconnect, recordingState.busy)
                                 Box(Modifier.padding(horizontal = 24.dp)) {
-                                    SongMonitor(songAssistant) { tuningTab = "Song"; tuning = true }
+                                    SongMonitor(songAssistant) { appSettings = true; tuningTab = "Song"; tuning = true }
                                 }
                                 Spacer(Modifier.height(20.dp))
                             }
@@ -120,7 +134,7 @@ fun PrismApp(
                                     Text("PATTERNS", color = Muted, fontSize = 10.sp, letterSpacing = 2.sp, fontWeight = FontWeight.SemiBold)
                                     Spacer(Modifier.weight(1f))
                                     Text("React to audio", color = Color.White, fontSize = 12.sp)
-                                    Spacer(Modifier.width(10.dp))
+                                    SettingHelp("React to audio")
                                     Switch(settings.audioEnabled, { onChange(settings.copy(audioEnabled = it)) },
                                         Modifier.semantics { contentDescription = "React to audio" })
                                 }
@@ -136,7 +150,7 @@ fun PrismApp(
                             }
                             Row(Modifier.fillMaxWidth().padding(horizontal = 24.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                                 if (!crowdStatus.connected) SmallAction(if (settings.paused) "Play" else "Pause", if (settings.paused) "play" else "pause") { onChange(settings.copy(paused = !settings.paused)) }
-                                OutlinedButton(onClick = { if (crowdStatus.connected) crowdOpen = true else { tuningTab = "Geometry"; tuning = true } }, modifier = Modifier.weight(1f).height(48.dp), shape = RoundedCornerShape(16.dp), border = BorderStroke(1.dp, Color.White.copy(alpha = 0.18f)), contentPadding = PaddingValues(horizontal = 14.dp)) {
+                                OutlinedButton(onClick = { if (crowdStatus.connected) crowdOpen = true else { appSettings = false; tuningTab = settings.scene.shapeTab; tuning = true } }, modifier = Modifier.weight(1f).height(48.dp), shape = RoundedCornerShape(16.dp), border = BorderStroke(1.dp, Color.White.copy(alpha = 0.18f)), contentPadding = PaddingValues(horizontal = 14.dp)) {
                                     Glyph("tune", Modifier.size(18.dp), Color.White)
                                     Spacer(Modifier.width(9.dp))
                                     Text(if (crowdStatus.connected) "Crowd" else "Tune", color = Color.White, fontSize = 13.sp)
@@ -148,14 +162,19 @@ fun PrismApp(
                                 }
                             }
                             if (!crowdStatus.connected) {
-                                TextButton(onClick = { crowdOpen = true }, Modifier.align(Alignment.CenterHorizontally)) { Text("Join crowd show") }
-                                RecordingLauncher(recordingState, settings.source, onRecord, onOpenRecording, onShareRecording)
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+                                    TextButton(onClick = { appSettings = true; tuningTab = "Audio"; tuning = true }) { Text("App settings") }
+                                    TextButton(onClick = { crowdOpen = true }) { Text("Join crowd show") }
+                                }
+                                RecordingLibrary(recordingState, onOpenRecording, onShareRecording)
                             }
                             if (!landscape && !crowdStatus.connected) {
                                 Text("DRAG TO BEND THE LIGHT", Modifier.fillMaxWidth(), textAlign = androidx.compose.ui.text.style.TextAlign.Center, fontSize = 9.sp, letterSpacing = 2.sp, color = Muted.copy(alpha = 0.65f))
                             }
                         }
                     }
+                    if (tablet && settingsMinimized && !crowdStatus.connected) SidebarHandle("Settings", false,
+                        { settingsMinimized = false }, Modifier.align(Alignment.CenterEnd).safeDrawingPadding().padding(end = 16.dp))
                 }
             }
             if (fullscreen) {
@@ -170,19 +189,29 @@ fun PrismApp(
             if (tuning) TuningOverlay(
                 settings, status, connecting, onChange, onConnect, onDisconnect,
                 fps = { surface?.engine?.measuredFps ?: 0f }, dismiss = { tuning = false }, captureLocked = recordingState.busy,
-                songAssistant = songAssistant, initialTab = tuningTab, tablet = tablet
+                songAssistant = songAssistant, initialTab = tuningTab, tablet = tablet,
+                appSettings = appSettings, switchScope = { appSettings = !appSettings; tuningTab = if (appSettings) "Audio" else settings.scene.shapeTab },
+                minimized = settingsMinimized, onMinimize = { settingsMinimized = !settingsMinimized },
+                timingMinimized = timingMinimized, onTimingMinimize = { timingMinimized = !timingMinimized }
             )
             if (tablet && settings.tabletMonitor && !crowdOpen) TabletMonitor(songAssistant,
                 Modifier.align(Alignment.BottomStart).safeDrawingPadding().padding(16.dp).width(300.dp))
             if (tablet && settings.audioEnabled && !fullscreen && !tuning && !crowdOpen && !crowdStatus.connected)
                 TimingSidebar(settings,status.running,onChange,
                     Modifier.align(Alignment.TopStart).safeDrawingPadding()
-                        .padding(start=16.dp,top=if (recordingState.busy) 130.dp else 76.dp)
-                        .width(300.dp).heightIn(max=maxHeight*.5f-if (recordingState.busy) 54.dp else 0.dp))
-            if (recordingState.busy) RecordingBadge(recordingState, { recording.stop() },
-                Modifier.align(Alignment.TopStart).safeDrawingPadding().padding(start = 20.dp, top = if (fullscreen) 8.dp else 70.dp))
+                        .padding(start=16.dp,top=76.dp)
+                        .width(if (timingMinimized) 56.dp else 300.dp).heightIn(max=maxHeight*.5f),
+                    minimized = timingMinimized, onMinimize = { timingMinimized = !timingMinimized })
+            if (!crowdStatus.connected && !crowdOpen) SessionRecordControl(recordingState,
+                status.source.takeIf { status.running }, connecting, onRecord, { recording.stop() },
+                Modifier.align(Alignment.TopEnd).safeDrawingPadding().padding(top = 12.dp, end = 16.dp))
+            Text("${measuredFps.roundToInt()} FPS", modifier = Modifier.align(Alignment.TopEnd).safeDrawingPadding()
+                .padding(top = 76.dp, end = 16.dp).clip(RoundedCornerShape(10.dp)).background(Ink.copy(alpha = .9f))
+                .border(1.dp, Color.White.copy(alpha = .18f), RoundedCornerShape(10.dp)).padding(horizontal = 12.dp, vertical = 6.dp)
+                .semantics { contentDescription = "Current frame rate ${measuredFps.roundToInt()} FPS" },
+                color = Color.White, fontSize = 14.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Medium)
             if (!recordingState.busy && recordingState.message != null) {
-                Snackbar(Modifier.align(Alignment.TopCenter).safeDrawingPadding().padding(horizontal = 16.dp, vertical = 68.dp),
+                Snackbar(Modifier.align(Alignment.TopCenter).safeDrawingPadding().padding(horizontal = 16.dp, vertical = 84.dp),
                     action = { TextButton(onClick = recording::dismissMessage) { Text("Dismiss") } }) {
                     Text(recordingState.message!!)
                 }
@@ -201,7 +230,7 @@ fun PrismApp(
 }
 
 @Composable private fun SceneCard(scene: Scene, selected: Boolean, click: () -> Unit) {
-    Column(Modifier.width(112.dp).height(118.dp).clip(RoundedCornerShape(18.dp))
+    Column(Modifier.width(if (scene == Scene.KALEIDOSCOPE) 128.dp else 112.dp).height(118.dp).clip(RoundedCornerShape(18.dp))
         .background(Brush.verticalGradient(listOf(scene.accent.copy(alpha = if (selected) 0.23f else 0.10f), Panel)))
         .border(1.dp, if (selected) scene.accent.copy(alpha = 0.8f) else Color.White.copy(alpha = 0.09f), RoundedCornerShape(18.dp))
         .selectable(selected, onClick = click, role = Role.RadioButton).padding(12.dp)) {
@@ -234,6 +263,15 @@ fun PrismApp(
                 val bar = size.height * (0.25f + 0.65f * abs(sin(i * 1.2f + .5f)))
                 drawRoundRect(c.copy(alpha = .8f), Offset(size.width * i / 8, size.height-bar),
                     Size(size.width / 11, bar), androidx.compose.ui.geometry.CornerRadius(2.dp.toPx()))
+            }
+            Scene.KALEIDOSCOPE -> for (depth in 0..3) {
+                val r = radius * (1f - depth * .23f)
+                drawRect(c.copy(alpha = .9f - depth * .16f), center - Offset(r, r * .7f),
+                    Size(r * 2, r * 1.4f), style = Stroke(1.2.dp.toPx()))
+                for (x in listOf(-1f, 1f)) for (y in listOf(-1f, 1f)) {
+                    val corner = center + Offset(x * r, y * r * .7f)
+                    drawLine(c.copy(alpha = .4f), corner, center, 1.dp.toPx())
+                }
             }
             Scene.MANDELBROT -> {
                 val path=Path()
@@ -292,16 +330,20 @@ fun PrismApp(
         }
         Spacer(Modifier.height(10.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(if (source == AudioSource.SYSTEM) "Phone playback" else "Microphone input", color = Muted, fontSize = 11.sp, modifier = Modifier.weight(1f))
+            Text(if (source == AudioSource.SYSTEM) "Device playback" else "Microphone input", color = Muted, fontSize = 11.sp, modifier = Modifier.weight(1f))
+            SettingHelp("Input source")
             TextButton(onClick = if (status.running) onDisconnect else onConnect, enabled = !connecting && !captureLocked, contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)) {
-                Text(if (captureLocked) "Recording audio" else if (connecting) "Connecting…" else if (status.running) "Stop" else "Connect audio", fontSize = 11.sp)
+                Text(if (captureLocked) "Input locked" else if (connecting) "Connecting…" else if (status.running) "Stop" else "Connect audio", fontSize = 11.sp)
             }
         }
         RhythmMonitor(status.running, rhythm, timingNow, energy, details = false)
         val feedback = RhythmFeedback.from(status.running, rhythm, timingNow)
         val helper = status.message ?: if (status.running && rhythm.signalPresent && !feedback.barReady) feedback.help else if (source == AudioSource.SYSTEM) {
-            if (status.running && silentSeconds >= 5) "Play music in another app. If it stays quiet, that app may block capture; try the microphone."
-            else "Follows phone playback, even with headphones. Some apps block capture."
+            if (status.running && silentSeconds >= 5) {
+                if (AudioEngine.inputRms < .000001f) "Connected, but Android is sending silence. Pause and resume playback. If it stays silent, use Microphone; the player may block capture."
+                else "Playback is reaching prism at a very low level. Raise media volume or input gain."
+            }
+            else "Follows device playback, even with headphones. Some apps block capture."
         } else "Reacts to sound around you. Online song identification is optional."
         Text(helper, color = Muted, fontSize = 10.sp, lineHeight = 15.sp)
     }

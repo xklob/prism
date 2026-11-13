@@ -5,6 +5,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -12,6 +13,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.delay
 
@@ -37,6 +39,7 @@ import kotlinx.coroutines.delay
         SongMonitor(assistant)
         HorizontalDivider(color = Color.White.copy(alpha = .12f))
         RhythmMonitor(capture.running, rhythm, now, energy, details = false, showPhrase = false)
+        if (!capture.running) capture.message?.let { Text(it, color = Color(0xFFCBC9D4), fontSize = 11.sp) }
         val fresh = capture.running && rhythm.signalPresent && now - rhythm.timestamp in -.1.. .5
         ConfidenceMeter("Phrase", if (fresh) phrase.confidence else 0f,
             fresh && phrase.bar != null, fresh && phrase.manual, Modifier.fillMaxWidth())

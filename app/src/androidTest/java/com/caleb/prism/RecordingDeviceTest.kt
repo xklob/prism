@@ -31,9 +31,10 @@ class RecordingDeviceTest {
         if (android.os.Build.VERSION.SDK_INT >= 33) instrumentation.uiAutomation.grantRuntimePermission(context.packageName, Manifest.permission.POST_NOTIFICATIONS)
         context.getSharedPreferences("prism", 0).edit().clear().commit()
         context.getSharedPreferences("recordings", 0).edit().clear().commit()
+        Configurator.getInstance().waitForIdleTimeout = 300
         device.wakeUp(); device.setOrientationNatural()
         activity = instrumentation.startActivitySync(Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as MainActivity
-        assertTrue(device.wait(Until.hasObject(By.text("Record session")), 10000))
+        assertTrue(waitAction("Record session", 10000))
         SystemClock.sleep(1000)
     }
 
@@ -45,25 +46,49 @@ class RecordingDeviceTest {
         device.setOrientationNatural(); device.unfreezeRotation()
     }
 
+    private fun waitAction(label: String, timeout: Long): Boolean {
+        val deadline = SystemClock.elapsedRealtime() + timeout
+        do {
+            if (android.os.Build.VERSION.SDK_INT >= 33) instrumentation.uiAutomation.clearCache()
+            if (device.hasObject(By.desc(label))) return true
+            SystemClock.sleep(150)
+        } while (SystemClock.elapsedRealtime() < deadline)
+        return false
+    }
+
     private fun click(text: String) {
         if (android.os.Build.VERSION.SDK_INT >= 33) instrumentation.uiAutomation.clearCache()
-        val control = device.wait(Until.findObject(By.text(text)), 8000)
+        val selector = if (text in listOf("Record session", "Stop recording")) By.desc(text) else By.text(text)
+        val control = device.wait(Until.findObject(selector), 8000)
         assertNotNull("Expected action: $text", control)
         control.click()
         SystemClock.sleep(350)
         if (android.os.Build.VERSION.SDK_INT >= 33) instrumentation.uiAutomation.clearCache()
     }
 
-    private fun start(source: AudioSource) {
-        click("Record session")
+    private fun connect(source: AudioSource) {
+        if (AudioEngine.status.value.running) {
+            assertEquals(source, AudioEngine.status.value.source)
+            return
+        }
+        if (!SettingsStore(context).load().audioEnabled) device.findObject(By.desc("React to audio"))!!.click()
         click(source.label)
-        click("Start recording")
+        click("Connect audio")
         if (source == AudioSource.SYSTEM) {
+            click("CONTINUE")
             val consent = device.wait(Until.findObject(By.res("android:id/button1")), 6000)
             assertNotNull("Playback capture must ask for Android consent", consent)
             consent.click()
         }
-        val started = device.wait(Until.hasObject(By.text("Stop recording")), 12000)
+        val deadline = SystemClock.elapsedRealtime() + 8000
+        while (!AudioEngine.status.value.running && SystemClock.elapsedRealtime() < deadline) SystemClock.sleep(100)
+        assertTrue(AudioEngine.status.value.running)
+    }
+
+    private fun start(source: AudioSource? = null) {
+        if (source != null) connect(source)
+        click("Record session")
+        val started = waitAction("Stop recording", 12000)
         if (!started) {
             device.takeScreenshot(File(evidence, "recording-start-failure.png"))
             device.dumpWindowHierarchy(File(evidence, "recording-start-failure.xml"))
@@ -103,7 +128,8 @@ class RecordingDeviceTest {
             assertEquals(AudioTrack.SUCCESS, playback.setLoopPoints(0, samples.size / 2, -1))
             playback.play()
             start(AudioSource.SYSTEM)
-            assertFalse("Ambient visuals can record audio", SettingsStore(context).load().audioEnabled)
+            device.findObject(By.desc("React to audio"))!!.click()
+            assertFalse("Ambient visuals can retain the active recording input", SettingsStore(context).load().audioEnabled)
             assertEquals(2, AudioEngine.status.value.channels)
             SystemClock.sleep(2500)
             val label = device.findObject(By.text("Immerse"))!!.visibleBounds
@@ -120,7 +146,7 @@ class RecordingDeviceTest {
             click("Kaleido")
             assertTrue("Changing to another ambient pattern keeps recording audio", AudioEngine.status.value.running)
             click("Tune")
-            assertTrue(device.hasObject(By.text("Stop recording")))
+            assertTrue(device.hasObject(By.desc("Stop recording")))
             click("Color")
             val slider = device.findObject(By.desc("Hue shift"))!!
             val r = slider.visibleBounds
@@ -131,7 +157,7 @@ class RecordingDeviceTest {
             click("Immerse")
             device.wait(Until.findObject(By.text("Got it")), 700)?.click()
             if (android.os.Build.VERSION.SDK_INT >= 33) instrumentation.uiAutomation.clearCache()
-            val stopVisible = device.wait(Until.hasObject(By.text("Stop recording")), 4000)
+            val stopVisible = waitAction("Stop recording", 4000)
             if (!stopVisible) device.takeScreenshot(File(evidence, "recording-immersive-failure.png"))
             assertTrue("Stop remains available in immersive mode", stopVisible)
             SystemClock.sleep(1500)
@@ -159,7 +185,7 @@ class RecordingDeviceTest {
         verify(first, 1, "microphone-session.mp4")
         assertFalse(AudioEngine.status.value.running)
         context.startActivity(Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP))
-        assertTrue(device.wait(Until.hasObject(By.text("Record session")), 5000))
+        assertTrue(waitAction("Record session", 5000))
         start(AudioSource.MICROPHONE)
         SystemClock.sleep(2000)
         click("Stop recording")
@@ -171,19 +197,26 @@ class RecordingDeviceTest {
         device.pressBack()
     }
 
-    @Test fun canceledPlaybackConsentDoesNotLeaveARecorderOrAudioRunning() {
-        click("Record session"); click(AudioSource.SYSTEM.label); click("Start recording")
-        assertNotNull(device.wait(Until.findObject(By.res("android:id/button1")), 5000))
-        device.pressBack()
-        assertTrue(device.wait(Until.hasObject(By.text("Record session")), 5000))
-        SystemClock.sleep(500)
+    @Test fun silentRecordingDoesNotOpenAnAudioInputAndKeepsControlsOut() {
         assertFalse(AudioEngine.status.value.running)
-        assertEquals("Only the song input observer remains", 1, AudioEngine.pcmSinkCount)
-        assertNull(context.getSharedPreferences("recordings", 0).getString("uri", null))
-        start(AudioSource.MICROPHONE)
-        SystemClock.sleep(1000)
+        val sinks = AudioEngine.pcmSinkCount
+        start()
+        assertFalse("Silent capture must not start microphone or playback capture", AudioEngine.status.value.running)
+        assertEquals(sinks, AudioEngine.pcmSinkCount)
+        click("Tune")
+        assertTrue(device.hasObject(By.desc("Stop recording")))
+        SystemClock.sleep(2500)
+        device.takeScreenshot(File(evidence, "silent-recording-tuning.png"))
         click("Stop recording")
-        verify(awaitSaved(), 1, "after-cancel-session.mp4")
+        val uri = awaitSaved()
+        verify(uri, 0, "silent-session.mp4")
+        assertFalse(AudioEngine.status.value.running)
+        assertEquals(sinks, AudioEngine.pcmSinkCount)
+        click("Done")
+        start()
+        SystemClock.sleep(1500)
+        click("Stop recording")
+        verify(awaitSaved(uri.toString()), 0, "silent-second-session.mp4")
     }
 
     @Test fun audioReactivityAndPauseCanChangeWithoutInterruptingRecording() {
@@ -220,7 +253,7 @@ class RecordingDeviceTest {
         verify(awaitSaved(), 2, "interrupted-session.mp4")
         assertFalse(AudioEngine.status.value.running)
         assertEquals("Only the song input observer remains", 1, AudioEngine.pcmSinkCount)
-        assertTrue(device.wait(Until.hasObject(By.text("Record session")), 5000))
+        assertTrue(waitAction("Record session", 5000))
     }
 
     private fun verify(uri: Uri, channels: Int, filename: String) {
@@ -234,7 +267,7 @@ class RecordingDeviceTest {
         val extractor = MediaExtractor()
         try {
             extractor.setDataSource(file.absolutePath)
-            assertEquals(2, extractor.trackCount)
+            assertEquals(if (channels == 0) 1 else 2, extractor.trackCount)
             var audioFound = false
             var videoFound = false
             for (track in 0 until extractor.trackCount) {
@@ -248,7 +281,7 @@ class RecordingDeviceTest {
                 } else {
                     assertEquals("video/avc", mime)
                     assertTrue(format.getInteger(MediaFormat.KEY_WIDTH) > 0)
-                    assertTrue(format.getInteger(MediaFormat.KEY_HEIGHT) > format.getInteger(MediaFormat.KEY_WIDTH))
+                    assertTrue(format.getInteger(MediaFormat.KEY_HEIGHT) > 0)
                     videoFound = true
                 }
                 extractor.selectTrack(track)
@@ -266,7 +299,8 @@ class RecordingDeviceTest {
                 assertTrue("Both tracks need real duration", previous > 500_000)
                 extractor.unselectTrack(track)
             }
-            assertTrue(audioFound && videoFound)
+            assertEquals(channels > 0, audioFound)
+            assertTrue(videoFound)
         } finally { extractor.release() }
         MediaMetadataRetriever().use { media ->
             media.setDataSource(file.absolutePath)

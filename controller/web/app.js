@@ -38,8 +38,8 @@ async function invitation() {
     const data = await api('join?role=' + role);
     $('qr').src = data.qr; $('invite').value = data.link;
     $('roleHelp').textContent = role === 'source'
-      ? 'For the VJ only: join, then connect microphone or system audio in Prism.'
-      : 'Scan with your phone camera and open Prism. Or paste the invitation into Crowd in Prism.';
+      ? 'For the VJ only: join, then connect microphone or system audio in prism.'
+      : 'Scan with your phone camera and open prism. Or paste the invitation into Crowd in prism.';
     $('viewers').classList.toggle('primary',role === 'viewer');
     $('audioRole').classList.toggle('primary',role === 'source');
   } catch (error) { $('error').textContent = error.message; }
@@ -62,7 +62,7 @@ $('copy').onclick = async () => {
   catch { $('invite').select(); $('error').textContent='Copy the selected invitation.'; }
 };
 $('export').onclick = () => {
-  const blob = new Blob([JSON.stringify({kind:'Prism software timing diagnostics',samples:historySamples},null,2)],{type:'application/json'});
+  const blob = new Blob([JSON.stringify({kind:'prism software timing diagnostics',samples:historySamples},null,2)],{type:'application/json'});
   const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='prism-timing.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
 };
 async function refresh() {

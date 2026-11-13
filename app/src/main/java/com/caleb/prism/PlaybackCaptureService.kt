@@ -25,7 +25,9 @@ class PlaybackCaptureService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == "STOP" || intent == null) { shutdown(); return START_NOT_STICKY }
+        if (intent?.action == "STOP" || intent == null) {
+            shutdown("System audio stopped. Tap Connect audio to reconnect."); return START_NOT_STICKY
+        }
         if (projection != null) return START_NOT_STICKY
         val consent = if (Build.VERSION.SDK_INT >= 33) intent.getParcelableExtra("consent", Intent::class.java)
             else @Suppress("DEPRECATION") (intent.getParcelableExtra("consent") as? Intent)
@@ -33,7 +35,7 @@ class PlaybackCaptureService : Service() {
         val open = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         val stop = PendingIntent.getService(this, 1, Intent(this, javaClass).setAction("STOP"), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         val notification = Notification.Builder(this, "audio").setSmallIcon(R.drawable.ic_prism)
-            .setContentTitle("Prism is listening to system audio")
+            .setContentTitle("prism is listening to system audio")
             .setContentText("Audio is analyzed on this device. Tap Stop to disconnect.")
             .setContentIntent(open).setOngoing(true)
             .addAction(Notification.Action.Builder(null, "Stop", stop).build()).build()
@@ -43,7 +45,7 @@ class PlaybackCaptureService : Service() {
             val capture = requireNotNull(manager.getMediaProjection(Activity.RESULT_OK, consent))
             projection = capture
             callback = object : MediaProjection.Callback() {
-                override fun onStop() { shutdown() }
+                override fun onStop() { shutdown("System audio access ended outside prism. Tap Connect audio to reconnect.") }
             }.also { capture.registerCallback(it, Handler(Looper.getMainLooper())) }
             AudioEngine.startSystem(this, capture)
             if (!AudioEngine.status.value.running) {
@@ -60,11 +62,11 @@ class PlaybackCaptureService : Service() {
         return START_NOT_STICKY
     }
 
-    private fun shutdown() {
+    private fun shutdown(message: String? = null) {
         if (shuttingDown) return
         shuttingDown = true
         scope.cancel()
-        if (AudioEngine.status.value.source == AudioSource.SYSTEM) AudioEngine.stop()
+        if (AudioEngine.status.value.source == AudioSource.SYSTEM) AudioEngine.stop(message)
         callback?.let { projection?.unregisterCallback(it) }
         callback = null
         projection?.stop()

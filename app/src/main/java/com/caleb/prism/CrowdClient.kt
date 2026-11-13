@@ -23,7 +23,7 @@ data class CrowdInvitation(val host: String, val port: Int, val session: String,
         fun parse(text: String): CrowdInvitation {
             require(text.length <= 4096) { "The invitation is too long." }
             val uri = Uri.parse(text.trim())
-            require(uri.scheme == "prism" && uri.host == "crowd") { "Paste a Prism crowd invitation from the controller." }
+            require(uri.scheme == "prism" && uri.host == "crowd") { "Paste a prism crowd invitation from the controller." }
             fun value(name: String) = requireNotNull(uri.getQueryParameter(name)) { "Incomplete invitation." }
             val host = value("host")
             val parts = host.split('.').map { it.toIntOrNull() }

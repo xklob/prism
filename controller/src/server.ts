@@ -44,7 +44,7 @@ export async function startController(options: { udpPort?: number; httpPort?: nu
           send(signPacket('error', { message: 'This show already has 50 participants.' }), remote); return;
         }
         client = { address: remote.address, port: remote.port,
-          name: String(m.name ?? 'Prism phone').slice(0, 64), seen: received, source,
+          name: String(m.name ?? 'prism phone').slice(0, 64), seen: received, source,
           health: {}, rateAt: received, rateCount: 0 };
         clients.set(m.id, client);
       }
@@ -166,7 +166,7 @@ export async function startController(options: { udpPort?: number; httpPort?: nu
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const controller = await startController();
-  console.log('Prism controller: ' + controller.dashboardUrl);
+  console.log('prism controller: ' + controller.dashboardUrl);
   console.log('Keep this window open. Ctrl+C stops the show. UDP port: ' + controller.udpPort);
   if (process.env.PRISM_LAUNCH_FILE) {
     const { writeFile } = await import('node:fs/promises');

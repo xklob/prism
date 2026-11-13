@@ -1,17 +1,17 @@
-# Prism Crowd controller
+# prism Crowd controller
 
-Run a small crowd show using a Windows laptop's Wi-Fi card. The controller starts Mobile Hotspot, opens a local dashboard, and sends a shared timeline to Prism phones. Internet access is not used by the show protocol.
+Run a small crowd show using a Windows laptop's Wi-Fi card. The controller starts Mobile Hotspot, opens a local dashboard, and sends a shared timeline to prism phones. Internet access is not used by the show protocol.
 
 ## Start a show
 
-1. Install the **Prism 1.9.0 APK** on each Android phone.
+1. Install the **prism 1.10.0 APK** on each Android phone.
 2. Extract the complete **Windows x64 controller ZIP** into a folder you can write to. Double-click **Start-Prism.cmd**.
 3. Windows requests administrator access to allow the controller's UDP port through its firewall. The launcher preserves your existing hotspot name and password and turns the hotspot on.
-4. Scan the dashboard's **Audience** invitation with the phone's camera and open Prism. Tap **Join show**. Android can ask to connect to the hotspot for this app. Alternatively, join the hotspot in Android Settings, paste the invitation into **Join crowd show**, and turn off **Ask Android to join the hotspot**.
+4. Scan the dashboard's **Audience** invitation with the phone's camera and open prism. Tap **Join show**. Android can ask to connect to the hotspot for this app. Alternatively, join the hotspot in Android Settings, paste the invitation into **Join crowd show**, and turn off **Ask Android to join the hotspot**.
 5. Wait for **Ready**, then click **Start show** on the laptop. The initial diagnostic is a 50 ms white flash on beat 1 of each bar at 120 BPM. Choose quarter notes for more frequent timing checks.
-6. For patterns, select **Prism scene**, choose Aurora, Kaleido, Wormhole, Julia, or Mandelbrot, then click **Queue settings**. Changes take effect at a shared future boundary. **Blackout** takes effect as soon as each phone receives it.
+6. For patterns, select **prism scene**, choose Aurora, Kaleido, Wormhole, Julia, Mandelbrot, or Kaleidoscope, then click **Queue settings**. Changes take effect at a shared future boundary. **Blackout** takes effect as soon as each phone receives it.
 
-Keep Prism in the foreground on the phones and keep the controller window open. Press Ctrl+C in the controller window to finish. The launcher stops a hotspot that it started; an already-running hotspot stays on. Closing the window forcibly may leave Mobile Hotspot on, so check Windows Settings in that case.
+Keep prism in the foreground on the phones and keep the controller window open. Press Ctrl+C in the controller window to finish. The launcher stops a hotspot that it started; an already-running hotspot stays on. Closing the window forcibly may leave Mobile Hotspot on, so check Windows Settings in that case.
 
 The phone's Crowd controls are transparent over the full-screen visual. Each participant can disable flashes and inversion, adjust screen brightness, blank their own screen, or leave. Local recording is unavailable while joined.
 
@@ -23,7 +23,7 @@ Windows may require an active Wi-Fi or Ethernet connection profile before Mobile
 
 The packaged controller includes Node.js 24 for Windows x64 and its runtime dependencies. No Node installation or development tools are needed. If Windows blocks a downloaded ZIP, open the ZIP's Properties and unblock it before extracting.
 
-The firewall rule **Prism crowd timing** allows only the controller executable's UDP port, **48761**, from the local subnet. The dashboard listens only on the laptop's loopback address, port **48760**. Restart the launcher after moving the controller folder so the rule follows its executable.
+The firewall rule **prism crowd timing** allows only the controller executable's UDP port, **48761**, from the local subnet. The dashboard listens only on the laptop's loopback address, port **48760**. Restart the launcher after moving the controller folder so the rule follows its executable.
 
 For an existing network, run **Start-Prism.cmd -NoHotspot** and choose the correct local interface in the dashboard. **-Inspect** reports hotspot support and capacity without changing the network. **-NoFirewall** skips rule creation when a suitable rule already exists. **-Port** changes the UDP port.
 
@@ -31,11 +31,11 @@ For an existing network, run **Start-Prism.cmd -NoHotspot** and choose the corre
 
 Manual tempo is the quickest timing check. Enter a BPM and queue it, use **Tap tempo**, or click **Bar / phrase starts here** on a known first beat. Manual phrase alignment is a chosen grid, not detected song structure.
 
-For live music, select **Audio input phone** on the laptop and use that separate invitation on one Prism phone. On that phone, choose microphone or system audio and tap **Connect audio**, granting the usual Android capture permissions. Then select **Prism audio input** as the controller's timing source and start the show.
+For live music, select **Audio input phone** on the laptop and use that separate invitation on one prism phone. On that phone, choose microphone or system audio and tap **Connect audio**, granting the usual Android capture permissions. Then select **prism audio input** as the controller's timing source and start the show.
 
 The input phone sends timestamped beat, tempo, bar, phrase, and confidence data. Audio samples are not sent to the controller or audience. Audience phones do not open their microphones. Existing song assistance can inform the input phone's detector, with its existing opt-in network behavior.
 
-Keep the input phone in Prism after starting playback in Spotify, YouTube, or another app. System capture still depends on the player's Android capture policy. Going into the background suspends the crowd connection; returning reacquires the show clock. Other phones suppress accents when the input becomes stale or uncertain. Only one input phone can publish timing at a time.
+Keep the input phone in prism after starting playback in Spotify, YouTube, or another app. System capture still depends on the player's Android capture policy. Going into the background suspends the crowd connection; returning reacquires the show clock. Other phones suppress accents when the input becomes stale or uncertain. Only one input phone can publish timing at a time.
 
 Network synchronization cannot repair an incorrect musical beat or bar estimate. The dashboard separates music confidence from each phone's clock uncertainty and frame rate. Phrase boundaries remain estimates unless aligned manually.
 
@@ -76,4 +76,4 @@ See the main README for Android build and instrumentation setup. Physical multi-
 
 Windows references: [Mobile Hotspot](https://support.microsoft.com/en-us/windows/experience/connectivity-networking/use-your-windows-device-as-a-mobile-hotspot), [reported client capacity](https://learn.microsoft.com/en-us/uwp/api/windows.networking.networkoperators.networkoperatortetheringmanager.maxclientcount).
 
-Mandelbrot requires Prism 1.9 or newer on audience devices. Equalizer is local-only because the crowd protocol carries timing, not per-band audio spectra.
+Mandelbrot requires prism 1.9 or newer on audience devices. Equalizer is local-only because the crowd protocol carries timing, not per-band audio spectra.

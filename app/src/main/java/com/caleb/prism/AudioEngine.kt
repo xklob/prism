@@ -45,6 +45,10 @@ object AudioEngine {
     @Volatile private var generation = 0
     private var recorder: AudioRecord? = null
     private var worker: Thread? = null
+    private var captureWatch: CaptureWatch? = null
+    val audioSessionId get() = runCatching { recorder?.audioSessionId }.getOrNull()
+    @Volatile var inputRms = 0f; private set
+    @Volatile var stereoCancellation = false; private set
     private const val SAMPLE_RATE = 48000
     private const val BLOCK = 960
     private val pcmSinks = CopyOnWriteArrayList<PcmSink>()
@@ -109,12 +113,17 @@ object AudioEngine {
             recorder = active
             val session = ++generation
             val channels = active.channelCount
+            val watch = CaptureWatch(context.applicationContext, active, source) { message ->
+                synchronized(this) { if (generation == session) stop(message) }
+            }
+            captureWatch = watch
             mutableStatus.value = CaptureStatus(true, source, channels = channels)
             worker = thread(name = "Prism audio", isDaemon = true) {
                 android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_AUDIO)
                 val analyzer = SpectrumAnalyzer(SAMPLE_RATE, 2048, BLOCK)
                 val spectrumWindow=ShortArray(2048)
                 val samples = ShortArray(BLOCK)
+                val playbackAnalysis = PlaybackAnalysis()
                 val captured = ShortArray(BLOCK * channels)
                 var offset = 0
                 var rhythmAnalyzer: RhythmAnalyzer? = null
@@ -128,10 +137,12 @@ object AudioEngine {
                     if (generation != session) return@thread
                     active.startRecording()
                     check(active.recordingState == AudioRecord.RECORDSTATE_RECORDING) { "Audio input did not start" }
+                    watch.started()
                     while (generation == session) {
                         val read = active.read(captured, offset, captured.size - offset, AudioRecord.READ_BLOCKING)
                         if (read < 0) error("Audio input disconnected")
                         if (read == 0) { Thread.sleep(8); continue }
+                        watch.receivedSamples()
                         offset += read
                         if (offset == captured.size) {
                             if (audioOrigin.isNaN()) audioOrigin=System.nanoTime()/1e9-BLOCK.toDouble()/SAMPLE_RATE
@@ -141,7 +152,13 @@ object AudioEngine {
                             }
                             val firstSampleTime = audioOrigin + samplesRead.toDouble() / SAMPLE_RATE
                             if (generation == session) pcmSinks.forEach { it.accept(captured, (firstSampleTime * 1e9).toLong()) }
-                            if (channels == 1) captured.copyInto(samples) else for (i in samples.indices) {
+                            if (source == AudioSource.SYSTEM) {
+                                playbackAnalysis.process(captured, channels, samples)
+                                if (generation == session) {
+                                    inputRms = playbackAnalysis.rawRms
+                                    stereoCancellation = playbackAnalysis.cancelingStereo
+                                }
+                            } else if (channels == 1) captured.copyInto(samples) else for (i in samples.indices) {
                                 samples[i] = ((captured[i * 2].toInt() + captured[i * 2 + 1].toInt()) / 2).toShort()
                             }
                             if (timingRevision != songTimingRevision) {
@@ -183,11 +200,13 @@ object AudioEngine {
                     Log.e("PrismRhythm","Audio or rhythm detector failed",error)
                     if (generation == session) mutableStatus.value = CaptureStatus(message = "Audio timing disconnected. Tap Connect audio to try again.")
                 } finally {
+                    watch.close()
                     rhythmAnalyzer?.close()
                     runCatching { active.stop() }
                     active.release()
                     if (generation == session) {
                         levels = AudioLevels()
+                        inputRms = 0f; stereoCancellation = false
                         rhythm = RhythmState()
                         phrase = PhraseState(bars = phraseBars)
                         if (mutableStatus.value.running) mutableStatus.value = CaptureStatus()
@@ -195,23 +214,28 @@ object AudioEngine {
                 }
             }
         } catch (_: Exception) {
+            captureWatch?.close()
+            captureWatch = null
             input?.release()
             mutableStatus.value = CaptureStatus(message = "Couldn't open audio. Check audio permissions and try again.")
         }
     }
 
-    @Synchronized fun stop() {
+    @Synchronized fun stop(message: String? = null) {
         generation++
+        captureWatch?.close()
+        captureWatch = null
         val old = recorder
         recorder = null
         runCatching { old?.stop() }
         worker?.join(300)
         worker = null
         levels = AudioLevels()
+        inputRms = 0f; stereoCancellation = false
         rhythm = RhythmState()
         phrase = PhraseState(bars = phraseBars)
         inferenceMs = 0f
         commands.clear()
-        mutableStatus.value = CaptureStatus()
+        mutableStatus.value = CaptureStatus(message = message)
     }
 }

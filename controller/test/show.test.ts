@@ -81,3 +81,14 @@ test('fresh audio is scheduled ahead, bounded, and expires on signal loss', () =
   show.receiveAudio({ ...input(2500), ready: false }, 2500);
   assert.equal(show.snapshot(2500).music.ready, false);
 });
+
+test('kaleidoscope uses its stable scene ID and transitions on the shared boundary', () => {
+  const show = new Show();
+  show.command({ action: 'settings', scene: 9, mode: 'scene' }, 0);
+  const cue = show.snapshot(0).cues[1]!;
+  assert.equal(cue.scene, 9);
+  assert.equal(cue.previousScene, 1);
+  assert.equal(cue.transitionAt, cue.effective);
+  assert.equal(show.active(cue.effective).scene, 9);
+  assert.throws(() => show.command({ action: 'settings', scene: 8 }, cue.effective + 2000));
+});
