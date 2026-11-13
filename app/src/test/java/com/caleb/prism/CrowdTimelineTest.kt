@@ -45,12 +45,12 @@ class CrowdTimelineTest {
         assertEquals(0f,timeline.sample(snapshot,1000.0,true,false).motion.flash,0f)
     }
     @Test fun scheduledCueIsNotAppliedOnPacketArrivalAndInversionUsesItsAbsoluteAge() {
-        val future = cue.copy(revision=2,effective=3000.0,anchor=3000.0,settings=cue.settings.copy(scene=Scene.JULIA))
+        val future = cue.copy(revision=2,effective=3000.0,anchor=3000.0,settings=cue.settings.copy(scene=Scene.MANDELBROT))
         val scheduled = snapshot.copy(cues=listOf(cue,future))
         val timeline = CrowdTimeline()
         timeline.sample(scheduled,800.0,true,true)
-        assertEquals(Scene.AURORA,timeline.sample(scheduled,2999.0,true,true).cue.settings.scene)
-        assertEquals(Scene.JULIA,timeline.sample(scheduled,3000.0,true,true).cue.settings.scene)
+        assertEquals(Scene.KALEIDO,timeline.sample(scheduled,2999.0,true,true).cue.settings.scene)
+        assertEquals(Scene.MANDELBROT,timeline.sample(scheduled,3000.0,true,true).cue.settings.scene)
         assertEquals(.5f,timeline.sample(scheduled,3090.0,true,true).motion.inversion,.001f)
         assertEquals(0f,timeline.sample(scheduled,3090.0,true,true).motion.flash,0f)
     }

@@ -47,9 +47,9 @@ class TimingDiagnosticsTest {
     @Test fun looksKeepTheCurrentCaptureAndTiming() {
         val current = VisualSettings(source = AudioSource.SYSTEM, audioEnabled = false, sensitivity = 2f,
             beatsPerBar = 3, syncOffsetMs = 100f, targetFps = 30, adaptiveQuality = false, paused = true)
-        val look = VisualSettings.defaults(Scene.EQUALIZER).copy(eqBuckets = 64, effects = PostEffects(enabled = true))
+        val look = VisualSettings.defaults(Scene.KALEIDOSCOPE).copy(kaleidoscopeShape = 2, effects = PostEffects(enabled = true))
         val result = look.keepingSession(current)
-        assertEquals(Scene.EQUALIZER, result.scene); assertEquals(64, result.eqBuckets); assertTrue(result.effects.enabled)
+        assertEquals(Scene.KALEIDOSCOPE, result.scene); assertEquals(2, result.kaleidoscopeShape); assertTrue(result.effects.enabled)
         assertEquals(current.source, result.source); assertFalse(result.audioEnabled); assertTrue(result.paused)
         assertEquals(3, result.beatsPerBar); assertEquals(100f, result.syncOffsetMs, 0f)
         assertEquals(30, result.targetFps); assertFalse(result.adaptiveQuality)

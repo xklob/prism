@@ -24,8 +24,9 @@ class TabletDeviceTest {
         assertNotNull("Visible action: $text",node)
         node.click(); SystemClock.sleep(400); refresh()
     }
-    private fun launch(scene: Scene=Scene.AURORA) {
-        context.getSharedPreferences("prism",0).edit().clear().putInt("scene",scene.id).commit()
+    private fun launch(scene: Scene=Scene.KALEIDO, audioEnabled: Boolean=false) {
+        context.getSharedPreferences("prism",0).edit().clear().commit()
+        SettingsStore(context).save(VisualSettings.defaults(scene).copy(audioEnabled=audioEnabled))
         device.wakeUp(); device.setOrientationNatural()
         activity=instrumentation.startActivitySync(Intent(context,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as MainActivity
         assertTrue(device.wait(Until.hasObject(By.text("prism")),10000))
@@ -45,7 +46,7 @@ class TabletDeviceTest {
         val hud=device.findObject(By.desc(monitor)).visibleBounds
         assertFalse("Settings and status must not overlap",android.graphics.Rect.intersects(panel,hud))
         assertTrue("Landscape panel has useful slider width",panel.width()>device.displayWidth*.3)
-        for (tab in listOf("Weave","Color","Flow","Beat")) {
+        for (tab in listOf("Mirrors","Color","Motion","Beat")) {
             click(tab)
             assertTrue("Done stays visible in $tab",device.hasObject(By.text("Done")))
         }
@@ -60,7 +61,7 @@ class TabletDeviceTest {
         assertFalse(device.hasObject(By.desc(monitor)))
         device.pressBack(); SystemClock.sleep(400); click("App settings"); click("Display")
         device.findObject(By.desc("Tablet monitor")).click(); SystemClock.sleep(300)
-        click("Aurora settings")
+        click("Kaleido settings")
         assertTrue(device.takeScreenshot(File(evidence,"tablet-settings-landscape.png")))
         device.setOrientationLeft(); SystemClock.sleep(900); refresh()
         assertTrue(device.hasObject(By.text("Done")))
@@ -77,11 +78,11 @@ class TabletDeviceTest {
         assertTrue(device.hasObject(By.descStartsWith("Phrase confidence")))
         assertTrue(device.takeScreenshot(File(evidence,"tablet-fullscreen-monitor.png")))
     }
-    @Test fun equalizerControlsSaveRecallAndNewSceneIdsPersist() {
-        launch(Scene.EQUALIZER)
-        assertEquals(Scene.EQUALIZER,SettingsStore(context).load().scene)
+    @Test fun kaleidoscopeControlsSaveRecallAndNewSceneIdsPersist() {
+        launch(Scene.KALEIDOSCOPE, audioEnabled=true)
+        assertEquals(Scene.KALEIDOSCOPE,SettingsStore(context).load().scene)
         click("Tune")
-        assertTrue(device.hasObject(By.desc("Frequency bands")))
+        assertTrue(device.hasObject(By.desc("Fractal detail")))
         if (context.resources.configuration.smallestScreenWidthDp>=600) {
             val sidebar=device.findObject(By.desc("Manual timing panel")).visibleBounds
             assertFalse(android.graphics.Rect.intersects(sidebar,device.findObject(By.desc("Tuning panel")).visibleBounds))
@@ -92,10 +93,9 @@ class TabletDeviceTest {
         }
         // Exercise persisted settings through the same store used by the running activity.
         val store=SettingsStore(context)
-        val look=VisualSettings.defaults(Scene.EQUALIZER).copy(eqBuckets=48,eqMirror=true,eqRadial=true,
-            eqSegments=false,eqPeakHold=1.4f,eqFalloff=.8f,eqSpacing=.4f,eqGain=2f)
+        val look=VisualSettings.defaults(Scene.KALEIDOSCOPE).copy(kaleidoscopeShape=2,kaleidoscopeSpace=1.4f)
         store.saveLook(look)
-        assertEquals(look,store.loadLook(Scene.EQUALIZER,look.source))
+        assertEquals(look,store.loadLook(Scene.KALEIDOSCOPE,look.source))
         store.save(VisualSettings.defaults(Scene.MANDELBROT))
         assertEquals(Scene.MANDELBROT,store.load().scene)
     }

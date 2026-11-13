@@ -24,13 +24,6 @@ uniform int uPalette;
 // Beat pulse, bar accent, musical flow, optional treble texture.
 uniform vec4 uRhythm;
 uniform vec2 uDownbeat; // Brief white flash and fading RGB inversion on beat 1.
-uniform float uSpectrum[64];
-uniform float uPeaks[64];
-uniform int uEqCount;
-uniform float uEqSpacing;
-uniform int uEqMirror;
-uniform int uEqRadial;
-uniform int uEqSegments;
 uniform vec3 uFractalBands;
 uniform int uFractalShape;
 uniform float uFractalSpace;
@@ -67,29 +60,7 @@ vec2 fold(vec2 p, float segments) {
     return vec2(cos(a), sin(a)) * r;
 }
 
-vec3 aurora(vec2 p, float t) {
-    vec2 q = p * 1.5;
-    float m = uMorphTime;
-    for (int i = 0; i < 5; i++) {
-        float f = float(i);
-        q += (uDistortion * 0.31 + uRhythm.y * 0.19) * vec2(sin(q.y * 1.7 + m * 0.3 + f + uRhythm.x * 0.5), cos(q.x * 1.65 - m * 0.23 + f * 1.7));
-        q = rotate(0.31) * q;
-    }
-    float frequency = (9.0 + uComplexity * 26.0) * (1.0 + (uRhythm.z + uRhythm.w) * 0.12);
-    float phase = q.x * frequency + sin(q.y * (1.5 + uSymmetry * 0.2)) * 2.2 - t * 0.4;
-    float crossing = q.y * frequency * 0.82 + cos(q.x * 2.1 - m * 0.2 + uRhythm.y) * 2.2;
-    // Broad satin folds give the fine contours a readable structure and sense of depth.
-    float foldLight = 0.5 + 0.5 * sin(phase * 0.18 + sin(q.y * 1.2) * 1.4);
-    float ribbons = periodic(phase, 1.15);
-    float threads = periodic(crossing, 0.72);
-    float weave = smoothstep(-0.35, 0.35, sin(phase * 0.18));
-    vec3 base = palette(q.x * 0.065 + q.y * 0.045);
-    vec3 c = base * (0.035 + pow(foldLight, 2.0) * 0.22);
-    c += base * ribbons * (0.45 + foldLight * 0.35);
-    c = mix(c, palette(q.y * 0.07 + 0.18) * 0.75, threads * (0.18 + weave * 0.42));
-    c += palette(q.x * 0.06 + 0.12) * periodic(phase * 0.25, 1.8) * 0.24;
-    return c;
-}
+
 
 vec3 kaleido(vec2 p, float t) {
     vec2 q = fold(p, uSymmetry);
@@ -170,58 +141,9 @@ vec3 mandelbrot(vec2 p, float t) {
     return mix(vec3(0.008, 0.01, 0.025), outside, escaped * edge);
 }
 
-vec3 equalizer(vec2 uv) {
-    float coordinate = clamp((uv.x - 0.055) / 0.89, 0.0, 0.99999);
-    float vertical = (uv.y - 0.12) / 0.74;
-    float side = step(0.055, uv.x) * step(uv.x, 0.945);
-    if (uEqRadial == 1) {
-        vec2 p = (uv * 2.0 - 1.0) * uResolution / min(uResolution.x, uResolution.y);
-        coordinate = fract(atan(p.y, p.x) / TAU + 0.5 + uRotation / TAU);
-        vertical = (length(p) - 0.26) / 0.65;
-        side = 1.0;
-    } else if (uEqMirror == 1) vertical = abs(uv.y - 0.5) / 0.38;
-    if (uEqRadial == 1 && uEqMirror == 1) vertical = abs(vertical);
-    int count = clamp(uEqCount, 8, 64);
-    float bucket = coordinate * float(count);
-    int index = min(int(bucket), count - 1);
-    float aa = max(fwidth(vertical), 0.001);
-    float gap = uEqSpacing * 0.5;
-    float horizontal = smoothstep(gap, gap + fwidth(bucket), fract(bucket)) *
-        (1.0 - smoothstep(1.0 - gap - fwidth(bucket), 1.0 - gap, fract(bucket)));
-    float height = uSpectrum[index];
-    float bar = (1.0 - smoothstep(height - aa, height + aa, vertical)) * smoothstep(-aa, aa, vertical) * step(0.001, height);
-    if (uEqSegments == 1) bar *= 1.0 - smoothstep(0.72, 0.88, fract(vertical * 32.0));
-    float peak = (1.0 - smoothstep(0.003, 0.003 + aa, abs(vertical - uPeaks[index]))) * step(0.006, uPeaks[index]);
-    vec3 ink = palette(coordinate * 0.65 + vertical * 0.12);
-    float rail = (1.0 - smoothstep(0.0, aa * 1.3, abs(vertical))) * 0.12;
-    return (ink * bar * (0.65 + 0.35 * vertical) + mix(ink, vec3(1.0), 0.55) * peak + ink * rail) * horizontal * side;
-}
 
-vec3 julia(vec2 p, float t) {
-    vec2 z = p * 1.1;
-    float shape = uDistortion / 1.5;
-    vec2 constant = mix(vec2(-0.745, 0.186), vec2(-0.40, 0.59), shape);
-    constant += vec2(sin(uMorphTime * 0.12), cos(uMorphTime * 0.1)) * 0.009;
-    // Small movements of c produce large, intricate changes at the fractal boundary.
-    constant += vec2(uRhythm.y * 0.052, uRhythm.x * 0.025 - uRhythm.y * 0.028);
-    float escaped = 0.0, count = 0.0, trap = 10.0;
-    int iterations = 40 + int(uComplexity * 104.0);
-    for (int i = 0; i < 144; i++) {
-        if (i >= iterations) break;
-        z = vec2(z.x * z.x - z.y * z.y, 2.0 * z.x * z.y) + constant;
-        trap = min(trap, abs(length(z) - 0.7 - (uRhythm.z + uRhythm.w) * 0.13));
-        float magnitude = dot(z, z);
-        if (magnitude > 128.0) {
-            count = float(i) + 1.0 - log2(max(0.001, log2(magnitude) * 0.5));
-            escaped = 1.0;
-            break;
-        }
-    }
-    float contours = periodic(count * (1.8 + (uRhythm.z + uRhythm.w) * 0.25), 1.0);
-    vec3 outside = palette(count * 0.026) * (0.18 + contours * 0.82);
-    vec3 inside = palette(trap * 6.0 + 0.3) * periodic(trap * 140.0, 1.0) * 0.65;
-    return mix(inside, outside, escaped);
-}
+
+
 
 // An independently implemented folded wire fractal, inspired by AudioLabs' Kaleidoscope.
 // Distance estimates and a finite ray cone keep the small filaments stable as they recede.
@@ -275,13 +197,11 @@ vec3 kaleidoscope(vec2 p, float t) {
 }
 
 vec3 scene(int mode, vec2 p, float t) {
-    if (mode == 0) return aurora(p, t);
     if (mode == 1) return kaleido(p, t);
     if (mode == 2) return wormhole(p, t);
     if (mode == 7) return mandelbrot(p, t);
-    if (mode == 8) return equalizer(vUv);
     if (mode == 9) return kaleidoscope(p, t);
-    return julia(p, t);
+    return kaleido(p, t);
 }
 void main() {
     vec2 p = (vUv * 2.0 - 1.0) * uResolution / min(uResolution.x, uResolution.y);

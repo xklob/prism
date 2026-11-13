@@ -293,21 +293,9 @@ fun PrismApp(
         val center = Offset(size.width / 2, size.height / 2)
         val radius = min(size.width, size.height) * 0.46f
         when (scene) {
-            Scene.AURORA -> for (line in 0..6) {
-                val path = Path()
-                for (x in 0..50) {
-                    val fx = x / 50f
-                    val y = size.height * (0.18f + line * 0.1f) + sin(fx * 7f + line * 0.7f) * size.height * 0.12f
-                    if (x == 0) path.moveTo(fx * size.width, y) else path.lineTo(fx * size.width, y)
-                }
-                drawPath(path, c.copy(alpha = 0.3f + line / 10f), style = Stroke(1.4.dp.toPx()))
-            }
+
             Scene.WORMHOLE -> for (i in 1..6) drawCircle(c.copy(alpha = i / 7f), radius * i / 6f, center + Offset((6-i) * 1.8f, 0f), style = Stroke(1.2.dp.toPx()))
-            Scene.EQUALIZER -> for (i in 0..7) {
-                val bar = size.height * (0.25f + 0.65f * abs(sin(i * 1.2f + .5f)))
-                drawRoundRect(c.copy(alpha = .8f), Offset(size.width * i / 8, size.height-bar),
-                    Size(size.width / 11, bar), androidx.compose.ui.geometry.CornerRadius(2.dp.toPx()))
-            }
+
             Scene.KALEIDOSCOPE -> for (depth in 0..3) {
                 val r = radius * (1f - depth * .23f)
                 drawRect(c.copy(alpha = .9f - depth * .16f), center - Offset(r, r * .7f),
@@ -374,6 +362,7 @@ fun PrismApp(
                 }
             }
         }
+        if (source == AudioSource.SYSTEM) SpotifyRelayControls(captureLocked || connecting || status.running)
         Spacer(Modifier.height(10.dp))
         Row(Modifier.bringIntoViewRequester(connectRow), verticalAlignment = Alignment.CenterVertically) {
             Text(if (source == AudioSource.SYSTEM) "Device playback" else "Microphone input", color = Muted, fontSize = 11.sp, modifier = Modifier.weight(1f))

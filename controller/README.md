@@ -9,7 +9,7 @@ Run a small crowd show using a Windows laptop's Wi-Fi card. The controller start
 3. Windows requests administrator access to allow the controller's UDP port through its firewall. The launcher preserves your existing hotspot name and password and turns the hotspot on.
 4. Scan the dashboard's **Audience** invitation with the phone's camera and open prism. Tap **Join show**. Android can ask to connect to the hotspot for this app. Alternatively, join the hotspot in Android Settings, paste the invitation into **Join crowd show**, and turn off **Ask Android to join the hotspot**.
 5. Wait for **Ready**, then click **Start show** on the laptop. The initial diagnostic is a 50 ms white flash on beat 1 of each bar at 120 BPM. Choose quarter notes for more frequent timing checks.
-6. For patterns, select **prism scene**, choose Aurora, Kaleido, Wormhole, Julia, Mandelbrot, or Kaleidoscope, then click **Queue settings**. Changes take effect at a shared future boundary. **Blackout** takes effect as soon as each phone receives it.
+6. For patterns, select **prism scene**, choose Kaleido, Wormhole, Mandelbrot, or Kaleidoscope, then click **Queue settings**. Changes take effect at a shared future boundary. **Blackout** takes effect as soon as each phone receives it.
 
 Keep prism in the foreground on the phones and keep the controller window open. Press Ctrl+C in the controller window to finish. The launcher stops a hotspot that it started; an already-running hotspot stays on. Closing the window forcibly may leave Mobile Hotspot on, so check Windows Settings in that case.
 
@@ -76,4 +76,4 @@ See the main README for Android build and instrumentation setup. Physical multi-
 
 Windows references: [Mobile Hotspot](https://support.microsoft.com/en-us/windows/experience/connectivity-networking/use-your-windows-device-as-a-mobile-hotspot), [reported client capacity](https://learn.microsoft.com/en-us/uwp/api/windows.networking.networkoperators.networkoperatortetheringmanager.maxclientcount).
 
-Mandelbrot requires prism 1.9 or newer on audience devices. Equalizer is local-only because the crowd protocol carries timing, not per-band audio spectra.
+Mandelbrot requires prism 1.9 or newer on audience devices. The available patterns are Kaleido, Wormhole, Mandelbrot, and Kaleidoscope. Removed pattern IDs are rejected by controller 0.4.0.

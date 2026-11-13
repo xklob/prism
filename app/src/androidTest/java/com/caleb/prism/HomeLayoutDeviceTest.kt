@@ -67,9 +67,9 @@ class HomeLayoutDeviceTest {
         for (label in listOf("Kaleidoscope", "Tune", "Immerse") + if (compact) emptyList() else listOf("prism", "App settings", "Join crowd show"))
             assertTrue("$label is backed by the panel", panel.contains(text(label).visibleBounds))
         device.takeScreenshot(File(evidence, "home-panel-${device.displayWidth}-${context.resources.configuration.fontScale}.png"))
-        if (compact) node("Pattern Equalizer").click() else node("Previous pattern").click()
+        if (compact) node("Pattern Mandelbrot").click() else node("Previous pattern").click()
         SystemClock.sleep(700)
-        assertEquals(Scene.EQUALIZER, SettingsStore(context).load().scene)
+        assertEquals(Scene.MANDELBROT, SettingsStore(context).load().scene)
         // The footer remains reachable when audio controls enlarge the scrolling content.
         text("Tune").click(); SystemClock.sleep(400)
         val tuning = node("Tuning panel").visibleBounds

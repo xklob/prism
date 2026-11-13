@@ -40,7 +40,7 @@ test('late edits cannot rewrite an imminent cue, blackout cancels queued starts'
 });
 test('invalid commands cannot poison the timeline', () => {
   const show = new Show();
-  for (const patch of [{ bpm: NaN }, { bpm: -1 }, { scene: 5 }, { flashEvery: .01 }, { flashMs: 1000 }, { mode: 'oops' }]) {
+  for (const patch of [{ bpm: NaN }, { bpm: -1 }, { scene: 5 }, { scene: 0 }, { scene: 6 }, { scene: 8 }, { flashEvery: .01 }, { flashMs: 1000 }, { mode: 'oops' }]) {
     assert.throws(() => show.command({ action: 'settings', ...patch }, 0));
     assert.equal(show.snapshot(0).cues.length, 1);
   }

@@ -28,7 +28,7 @@ class PrismDeviceTest {
     private var activity: MainActivity? = null
     private val evidence = File(context.getExternalFilesDir(null), "review").apply { mkdirs() }
 
-    private fun launch(scene: Scene = Scene.AURORA, source: AudioSource = AudioSource.MICROPHONE,
+    private fun launch(scene: Scene = Scene.KALEIDO, source: AudioSource = AudioSource.MICROPHONE,
                        audioEnabled: Boolean = false, enabledScenes: Set<Scene> = emptySet()) {
         val prefs = context.getSharedPreferences("prism", 0).edit().clear().putInt("scene", scene.id).putInt("source", source.ordinal)
         (enabledScenes + if (audioEnabled) setOf(scene) else emptySet()).forEach {
@@ -105,7 +105,7 @@ class PrismDeviceTest {
     @Test fun b_systemAudioCapturesRealPlaybackAndStops() {
         instrumentation.uiAutomation.grantRuntimePermission(context.packageName, Manifest.permission.RECORD_AUDIO)
         if (android.os.Build.VERSION.SDK_INT >= 33) instrumentation.uiAutomation.grantRuntimePermission(context.packageName, Manifest.permission.POST_NOTIFICATIONS)
-        launch(Scene.AURORA, AudioSource.SYSTEM, enabledScenes = Scene.entries.toSet())
+        launch(Scene.KALEIDO, AudioSource.SYSTEM, enabledScenes = Scene.entries.toSet())
         click("Connect audio")
         click("CONTINUE")
         val consent = device.wait(Until.findObject(By.res("android:id/button1")), 5000)
@@ -163,7 +163,7 @@ class PrismDeviceTest {
             ShaderProbe(context, evidence).use { probe ->
                 val firstBeat=rhythm.copy(position=rhythm.barOffset.toDouble())
                 val motion=BeatMotion().update(firstBeat,levels,firstBeat.timestamp,VisualSettings(audioEnabled=true))
-                for (scene in Scene.entries.filter { it != Scene.EQUALIZER }) probe.verifyResponse(scene, motion, "captured")
+                for (scene in Scene.entries) probe.verifyResponse(scene, motion, "captured")
             }
             screenshot("07-aurora-system-live")
             click("Kaleido")
@@ -196,7 +196,7 @@ class PrismDeviceTest {
 
     @Test fun c_microphoneLifecycleAndAmbientIsolation() {
         instrumentation.uiAutomation.grantRuntimePermission(context.packageName, Manifest.permission.RECORD_AUDIO)
-        launch(Scene.AURORA, audioEnabled = true)
+        launch(Scene.KALEIDO, audioEnabled = true)
         click("Connect audio")
         assertTrue(AudioEngine.status.value.running)
         assertEquals(AudioSource.MICROPHONE, AudioEngine.status.value.source)
@@ -318,7 +318,7 @@ class PrismDeviceTest {
     }
 
     @Test fun f_juliaFractalAndLandscapeOverlay() {
-        launch(Scene.JULIA)
+        launch(Scene.MANDELBROT)
         click("Immerse")
         SystemClock.sleep(3000)
         screenshot("16-julia-fractal")
@@ -339,7 +339,7 @@ class PrismDeviceTest {
         ShaderProbe(context, evidence).use { probe ->
             for (scene in Scene.entries) probe.verifyDownbeatColors(scene)
             for ((label,motion) in listOf("beat" to MusicalMotion(beat=1f), "bar" to MusicalMotion(bar=1f), "flow" to MusicalMotion(flow=0.8f))) {
-                for (scene in Scene.entries.filter { it != Scene.EQUALIZER }) probe.verifyResponse(scene, motion, label)
+                for (scene in Scene.entries) probe.verifyResponse(scene, motion, label)
             }
             probe.verifyNewPatterns()
         }
@@ -349,11 +349,11 @@ class PrismDeviceTest {
         val prefs = context.getSharedPreferences("prism", 0)
         val store = SettingsStore(context)
         prefs.edit().clear().putInt("scene", 6).putFloat("scene.JULIA.zoom", 1.8f).commit()
-        assertEquals("Julia must survive the removal of earlier scene IDs", Scene.JULIA, store.load().scene)
+        assertEquals("Julia must survive the removal of earlier scene IDs", Scene.MANDELBROT, store.load().scene)
         assertEquals(1.8f, store.load().zoom, 0f)
         for (retired in listOf(3, 4, 5)) {
             prefs.edit().putInt("scene", retired).commit()
-            assertEquals(Scene.AURORA, store.load().scene)
+            assertEquals(Scene.KALEIDO, store.load().scene)
             assertFalse(store.load().audioEnabled)
         }
         for (scene in Scene.entries) {

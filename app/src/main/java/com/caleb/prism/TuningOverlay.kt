@@ -204,6 +204,7 @@ fun TuningOverlay(
                                         Text(if (connecting) "Wait…" else if (status.running) "Stop" else "Connect", style = ReadableText, fontSize = 11.sp)
                                     }
                                 }
+                                if (s.source == AudioSource.SYSTEM) SpotifyRelayControls(captureLocked || connecting || status.running)
                                 Column(Modifier.alpha(otherAlpha)) {
                                     RhythmMonitor(status.running, timing, timingNow, inputEnergy)
                                     if (!tablet) TimingControls(s, status.running, timing, change)

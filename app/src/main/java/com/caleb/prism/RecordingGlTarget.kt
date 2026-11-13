@@ -21,10 +21,12 @@ internal class RecordingGlTarget(private val encoder: SessionEncoder) {
     }
 
     fun draw(nowNs: Long, render: (Int, Int) -> Unit) {
-        if (nowNs < nextFrameNs) return
-        val interval = 1_000_000_000L / 30
-        if (nextFrameNs == 0L) nextFrameNs = nowNs
-        do { nextFrameNs += interval } while (nextFrameNs <= nowNs)
+        if (!encoder.followsRenderCadence) {
+            if (nowNs < nextFrameNs) return
+            val interval = 1_000_000_000L / encoder.frameRate
+            if (nextFrameNs == 0L) nextFrameNs = nowNs
+            do { nextFrameNs += interval } while (nextFrameNs <= nowNs)
+        }
         val oldDraw = EGL14.eglGetCurrentSurface(EGL14.EGL_DRAW)
         val oldRead = EGL14.eglGetCurrentSurface(EGL14.EGL_READ)
         try {

@@ -66,12 +66,13 @@ class MainActivity : ComponentActivity() {
         connecting = false
         if (result.resultCode == Activity.RESULT_OK && result.data != null && wantsAudio() && settings.source == AudioSource.SYSTEM) {
             try {
-                ContextCompat.startForegroundService(this, Intent(this, PlaybackCaptureService::class.java).putExtra("consent", result.data))
+                ContextCompat.startForegroundService(this, Intent(this, PlaybackCaptureService::class.java).putExtra("consent", result.data).putExtra("spotifyRelay", SpotifyRelay.enabled))
             } catch (_: Exception) {
                 AudioEngine.report("Couldn't connect system audio. Reopen prism and try again.")
                 recording.stop("Couldn't connect system audio. Try recording again.")
             }
         } else if (result.resultCode != Activity.RESULT_OK) {
+            SpotifyRelay.stop()
             recording.stop("System audio recording was canceled.")
             AudioEngine.report("System audio wasn't connected. Tap Connect audio whenever you're ready.")
         }
@@ -87,6 +88,7 @@ class MainActivity : ComponentActivity() {
             statusBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
             navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT)
         )
+        SpotifyRelay.init(this)
         store = SettingsStore(this)
         crowd = CrowdClient(this)
         if (intent.data?.scheme == "prism" && intent.data?.host == "crowd") crowdInvitation = intent.dataString.orEmpty()
@@ -244,6 +246,15 @@ class MainActivity : ComponentActivity() {
             audioPermission.launch(Manifest.permission.RECORD_AUDIO)
             return
         }
+        if (settings.source == AudioSource.SYSTEM && SpotifyRelay.enabled && !SpotifyRelay.prepared) {
+            connecting = true
+            SpotifyRelay.prepare { ready ->
+                connecting = false
+                if (ready && !isDestroyed && wantsAudio() && settings.source == AudioSource.SYSTEM) connectAudio()
+                else if (ready) SpotifyRelay.stop()
+            }
+            return
+        }
         AudioEngine.sensitivity = settings.sensitivity
         AudioEngine.beatsPerBar = settings.beatsPerBar
         if (settings.source == AudioSource.MICROPHONE) {
@@ -271,7 +282,9 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun disconnectAudio() {
+        connecting = false
         resumeMicrophone = false
+        SpotifyRelay.stop()
         AudioEngine.stop()
         stopService(Intent(this, PlaybackCaptureService::class.java))
     }

@@ -27,7 +27,7 @@ data class SavedRecording(val uri: Uri, val name: String)
 
 /** One worker owns the codecs, muxer and pending MediaStore file. GL only uses [surface]. */
 internal class SessionEncoder(
-    private val context: Context, screenWidth: Int, screenHeight: Int, val channels: Int,
+    private val context: Context, screenWidth: Int, screenHeight: Int, val channels: Int, private val requestedFps: Float = 60f,
     private val ready: (SessionEncoder) -> Unit,
     private val failed: (String) -> Unit,
     private val completed: (SavedRecording?, String?) -> Unit
@@ -37,6 +37,8 @@ internal class SessionEncoder(
     lateinit var surface: Surface; private set
     var width = 0; private set
     var height = 0; private set
+    var frameRate = 30; private set
+    val followsRenderCadence get() = frameRate >= requestedFps.roundToInt()
     var originNs = 0L; private set
     @Volatile private var stopNs = 0L
     @Volatile private var failure: String? = null
@@ -86,8 +88,12 @@ internal class SessionEncoder(
         val codecs = MediaCodecList(MediaCodecList.REGULAR_CODECS).codecInfos
             .filter { it.isEncoder && it.supportedTypes.any { type -> type.equals(mime, true) } }
             .sortedBy { if (it.isHardwareAccelerated) 0 else 1 }
-        // Keep the display's aspect ratio and choose an encoder-supported size, up to 1920 px.
-        outer@ for (edge in listOf(1920, 1280, 960, 640)) for (codec in codecs) {
+        // Prefer the full canvas and live rendering target; negotiate down only when needed.
+        val nativeEdge = maxOf(screenWidth, screenHeight)
+        val rates = listOf(requestedFps.roundToInt().coerceIn(1, 240), 60, 30)
+            .filter { it <= requestedFps.roundToInt().coerceIn(1, 240) }.distinct()
+        outer@ for (edge in (listOf(nativeEdge, 1920, 1280, 960, 640).filter { it <= nativeEdge }.distinct()))
+            for (rate in rates) for (codec in codecs) {
             val caps = codec.getCapabilitiesForType(mime)
             if (MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface !in caps.colorFormats) continue
             val sizes = caps.videoCapabilities ?: continue
@@ -95,14 +101,14 @@ internal class SessionEncoder(
             fun align(value: Int, alignment: Int) = ((value * scale / alignment).roundToInt() * alignment).coerceAtLeast(alignment)
             val w = align(screenWidth, sizes.widthAlignment)
             val h = align(screenHeight, sizes.heightAlignment)
-            if (!sizes.areSizeAndRateSupported(w, h, 30.0)) continue
+            if (!sizes.areSizeAndRateSupported(w, h, rate.toDouble())) continue
             var candidate: MediaCodec? = null
             var input: Surface? = null
             try {
                 val format = MediaFormat.createVideoFormat(mime, w, h).apply {
                     setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
-                    setInteger(MediaFormat.KEY_BIT_RATE, (w * h * 5).coerceIn(2_000_000, 12_000_000))
-                    setInteger(MediaFormat.KEY_FRAME_RATE, 30)
+                    setInteger(MediaFormat.KEY_BIT_RATE, (w.toLong() * h * rate / 6).coerceIn(2_000_000L, 80_000_000L).toInt().coerceIn(sizes.bitrateRange.lower, sizes.bitrateRange.upper))
+                    setInteger(MediaFormat.KEY_FRAME_RATE, rate)
                     setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1)
                     setInteger(MediaFormat.KEY_MAX_B_FRAMES, 0)
                 }
@@ -110,7 +116,7 @@ internal class SessionEncoder(
                 candidate.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
                 input = candidate.createInputSurface()
                 candidate.start()
-                width = w; height = h; surface = input; video = candidate
+                width = w; height = h; frameRate = rate; surface = input; video = candidate
                 break@outer
             } catch (_: Exception) {
                 input?.release()

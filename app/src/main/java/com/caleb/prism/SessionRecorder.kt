@@ -13,7 +13,8 @@ data class RecordingState(
     val source: AudioSource? = null,
     val startedNs: Long = 0,
     val saved: SavedRecording? = null,
-    val message: String? = null
+    val message: String? = null,
+    val format: String? = null
 ) {
     val busy get() = phase != RecordingPhase.IDLE
 }
@@ -33,7 +34,7 @@ class SessionRecorder(context: Context, private val onFinished: () -> Unit) {
 
     fun request(source: AudioSource?) {
         if (state.value.busy) return
-        mutableState.value = state.value.copy(phase = RecordingPhase.CONNECTING, source = source, message = null)
+        mutableState.value = state.value.copy(phase = RecordingPhase.CONNECTING, source = source, message = null, format = null)
     }
 
     fun prepare(view: PrismSurface) {
@@ -45,13 +46,15 @@ class SessionRecorder(context: Context, private val onFinished: () -> Unit) {
         stopTime = 0
         mutableState.value = state.value.copy(phase = RecordingPhase.PREPARING)
         encoder = SessionEncoder(context, view.width, view.height, if (withAudio) capture.channels else 0,
+            requestedFps = minOf(view.display?.refreshRate ?: 60f, 60f),
             ready = { ready -> main.post {
                 if (state.value.phase == RecordingPhase.SAVING) ready.finish(stopTime)
                 else if (state.value.phase == RecordingPhase.PREPARING) {
                     if (withAudio) AudioEngine.addPcmSink(ready)
                     view.beginRecording(ready) { main.post {
                         if (encoder === ready && state.value.phase == RecordingPhase.PREPARING) {
-                            mutableState.value = state.value.copy(phase = RecordingPhase.RECORDING, startedNs = ready.originNs)
+                            mutableState.value = state.value.copy(phase = RecordingPhase.RECORDING, startedNs = ready.originNs,
+                                format = "${ready.width}×${ready.height} // up to ${ready.frameRate} fps")
                         }
                     } }
                 }
@@ -64,7 +67,7 @@ class SessionRecorder(context: Context, private val onFinished: () -> Unit) {
                 mutableState.value = state.value.copy(phase = RecordingPhase.IDLE,
                     saved = saved ?: state.value.saved,
                     message = error ?: listOfNotNull(state.value.message,
-                        if (saved != null) "Saved to Movies/Prism" else if (state.value.message == null) "Recording canceled" else null).joinToString(" "))
+                        if (saved != null) "Saved to Movies/Prism // ${state.value.format.orEmpty()}" else if (state.value.message == null) "Recording canceled" else null).joinToString(" "))
                 onFinished()
             } }
         )
