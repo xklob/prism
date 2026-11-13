@@ -57,10 +57,12 @@ class ShaderProbe(context: Context, private val evidence: File, private val widt
 
     private fun render(scene: Scene, audio: MusicalMotion, time: Float = 4f,
                        spectrum: FloatArray = FloatArray(64), s: VisualSettings = VisualSettings.defaults(scene),
-                       fractalBands: FloatArray = FloatArray(3), fx: PostEffects? = null, scale: Float = 1f): ByteArray {
+                       fractalBands: FloatArray = FloatArray(3), fx: PostEffects? = null, scale: Float = 1f,
+                       outgoing: Boolean = false, mix: Float? = null, frozen: Boolean = false): ByteArray {
         val w = if (fx == null) width else (width * scale).toInt()
         val h = if (fx == null) height else (height * scale).toInt()
-        if (fx != null) post.begin(w, h) else { glBindFramebuffer(GL_FRAMEBUFFER, 0); glViewport(0, 0, width, height) }
+        if (fx != null) { if (outgoing) post.beginOutgoing(w, h) else post.begin(w, h) }
+        else { glBindFramebuffer(GL_FRAMEBUFFER, 0); glViewport(0, 0, width, height) }
         glUseProgram(program)
         fun f(name: String, value: Float) = glUniform1f(glGetUniformLocation(program, name), value)
         fun i(name: String, value: Int) = glUniform1i(glGetUniformLocation(program, name), value)
@@ -81,11 +83,28 @@ class ShaderProbe(context: Context, private val evidence: File, private val widt
         i("uFractalShape", s.kaleidoscopeShape); f("uFractalSpace", s.kaleidoscopeSpace)
         glUniform3f(glGetUniformLocation(program,"uFractalBands"),fractalBands[0],fractalBands[1],fractalBands[2])
         glDrawArrays(GL_TRIANGLE_STRIP, 0, 4)
-        if (fx != null) { post.finish(fx); post.present(width, height) }
+        if (fx != null && !outgoing) { mix?.let { post.mixScenes(it, frozen) }; post.finish(fx); post.present(width, height) }
         val buffer = ByteBuffer.allocateDirect(width * height * 4)
         glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, buffer)
         assertEquals("Shader render must not generate GL errors", GL_NO_ERROR, glGetError())
         return ByteArray(buffer.capacity()).also { buffer.get(it) }
+    }
+
+    fun verifyLookTransitions() {
+        val off = PostEffects()
+        val a = render(Scene.AURORA, MusicalMotion(), fx = off)
+        val b = render(Scene.WORMHOLE, MusicalMotion(), fx = off)
+        render(Scene.AURORA, MusicalMotion(), fx = off, outgoing = true)
+        assertArrayEquals(a, render(Scene.WORMHOLE, MusicalMotion(), fx = off, mix = 0f))
+        val middle = render(Scene.WORMHOLE, MusicalMotion(), fx = off, mix = .5f)
+        assertTrue(a.indices.all { abs((middle[it].toInt() and 255) - ((a[it].toInt() and 255) + (b[it].toInt() and 255)) / 2.0) <= 1.1 })
+        assertTrue(post.freezeScene())
+        // Retargeting a running transition must start from its visible composite.
+        assertArrayEquals(middle, render(Scene.JULIA, MusicalMotion(), fx = off, mix = 0f, frozen = true))
+        val c = render(Scene.JULIA, MusicalMotion(), fx = off)
+        assertArrayEquals(c, render(Scene.JULIA, MusicalMotion(), fx = off, mix = 1f, frozen = true))
+        assertArrayEquals(b, render(Scene.WORMHOLE, MusicalMotion(), fx = off, mix = 1f))
+        render(Scene.KALEIDOSCOPE, MusicalMotion(), fx = PostEffects(enabled = true), scale = .55f, mix = .5f, frozen = true)
     }
 
     fun verifyNewPatterns() {

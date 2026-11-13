@@ -39,6 +39,10 @@ class PrismSurface @JvmOverloads constructor(context: Context, onError: (String)
         engine.settings = settings
         resizeBuffer(width, height, settings.batterySaver)
     }
+    fun transitionTo(settings: VisualSettings, seconds: Float) {
+        engine.transitionRequest = LookTransition(settings, seconds)
+        update(settings)
+    }
     private var cancelFrames: (() -> Unit)? = null
     private var resumed = true
     private val power = context.getSystemService(PowerManager::class.java)
@@ -129,7 +133,6 @@ class PrismSurface @JvmOverloads constructor(context: Context, onError: (String)
 }
 
 class PrismRenderer(private val context: Context, private val onError: (String) -> Unit) : GLSurfaceView.Renderer {
-    private val fractalBands = FloatArray(3)
     internal var recording: RecordingGlTarget? = null
     private var viewportWidth = 1
     private var viewportHeight = 1
@@ -147,12 +150,24 @@ class PrismRenderer(private val context: Context, private val onError: (String) 
     @Volatile var qualityReport = RenderQualityReport(); private set
     private val uniforms = mutableMapOf<String, Int>()
     private var previousFrame = 0L
-    private var time = 0f
-    private var rotation = 0f
-    private var colorPhase = 0f
-    private var morphTime = 0f
-    private val beatMotion = BeatMotion()
-    private val equalizerMotion = EqualizerMotion()
+    internal class Layer(var settings: VisualSettings) {
+        var time = 0f; var rotation = 0f; var colorPhase = 0f; var morphTime = 0f
+        val beatMotion = BeatMotion(); val equalizerMotion = EqualizerMotion()
+        val fractalBands = FloatArray(3)
+        fun next(settings: VisualSettings) = Layer(settings).also {
+            it.time = time; it.rotation = rotation; it.colorPhase = colorPhase; it.morphTime = morphTime
+            fractalBands.copyInto(it.fractalBands)
+        }
+    }
+    @Volatile internal var transitionRequest: LookTransition? = null
+    private var consumedRequest: LookTransition? = null
+    private var layer = Layer(settings)
+    private var outgoing: Layer? = null
+    private var frozenOutgoing = false
+    private var fade = 1f
+    private var fadeSeconds = .6f
+    private var fadeEffects = PostEffects()
+    private var displayedEffects = PostEffects()
     private val silentSpectrum = FloatArray(64)
     private var frameCounter = 0
     private var statsStart = 0L
@@ -172,6 +187,8 @@ class PrismRenderer(private val context: Context, private val onError: (String) 
         // A new GL context invalidates all previous object names.
         post = null
         quality = RenderQuality()
+        layer = Layer(settings); outgoing = null; frozenOutgoing = false; fade = 1f
+        consumedRequest = transitionRequest
         try {
             fun compile(type: Int, asset: String): Int {
                 val shader = glCreateShader(type)
@@ -226,98 +243,64 @@ class PrismRenderer(private val context: Context, private val onError: (String) 
     override fun onDrawFrame(gl: GL10?) {
         val started = SystemClock.elapsedRealtimeNanos()
         val frameSeconds = if (previousFrame == 0L || previousFrame < resumedAtNs) 0.0 else (started - previousFrame) / 1e9
-        val dt = frameSeconds.toFloat().coerceIn(0f, 0.05f)
+        val dt = frameSeconds.toFloat().coerceIn(0f, .25f)
         previousFrame = started
         val following = crowd?.connected == true
         val presentationNs = maxOf(System.nanoTime(), expectedPresentationNs)
         val shared = if (following) crowd?.frame(presentationNs) else null
-        val s = shared?.cue?.settings ?: settings
+        val pending = transitionRequest?.takeIf { it !== consumedRequest && !following }
+        val s = shared?.cue?.settings ?: pending?.settings ?: settings
         val targetFps = min(if (settings.batterySaver) 30 else settings.targetFps, displayHz.toInt().coerceAtLeast(1))
         val scale = quality.sample(frameSeconds, targetFps, settings.adaptiveQuality, thermalStatus, s.paused)
         val renderWidth = (viewportWidth * scale).toInt().coerceAtLeast(1)
         val renderHeight = (viewportHeight * scale).toInt().coerceAtLeast(1)
         qualityReport = RenderQualityReport(scale, renderWidth, renderHeight, thermalStatus, targetFps)
+        val request = transitionRequest
+        val requested = !following && request != null && request !== consumedRequest
+        val changePattern = !following && s.scene != layer.settings.scene
+        if (requested || changePattern) {
+            val duration = if (requested) request!!.seconds else .6f
+            frozenOutgoing = (outgoing != null || frozenOutgoing) && post?.freezeScene() == true
+            outgoing = if (frozenOutgoing) null else layer
+            fadeEffects = displayedEffects
+            layer = layer.next(s)
+            fadeSeconds = duration.coerceIn(0f, 8f)
+            fade = if (fadeSeconds <= 0f) 1f else 0f
+            consumedRequest = request
+        }
+        if (following) { outgoing = null; frozenOutgoing = false; fade = 1f; consumedRequest = request }
+        layer.settings = s
         post?.begin(renderWidth, renderHeight)
-        if (following && shared != null) {
-            val seconds = (shared.time / 1000).toFloat()
-            time = seconds * s.speed
-            rotation = seconds * s.rotation * .3f
-            colorPhase = seconds * s.colorSpeed
-            morphTime = seconds * s.morph
-            touchSmoothX = 0f; touchSmoothY = 0f
-        } else if (!following && !s.paused) {
-            time += dt * s.speed
-            rotation += dt * s.rotation * 0.3f
-            colorPhase += dt * s.colorSpeed
-            morphTime += dt * s.morph
-            touchSmoothX += (touchX - touchSmoothX) * 0.07f
-            touchSmoothY += (touchY - touchSmoothY) * 0.07f
-        }
-        if (following && shared != null) {
-            currentMode = s.scene.id; previousMode = shared.cue.previousScene
-            transition = ((shared.time - shared.cue.transitionAt) / 600).toFloat().coerceIn(0f, 1f)
-        } else if (s.scene.id != currentMode) {
-            previousMode = if (currentMode < 0) s.scene.id else currentMode
-            currentMode = s.scene.id
-            transition = 0f
-        }
-        if (!following) transition = min(1f, transition + dt * 1.7f)
         if (following) {
+            touchSmoothX = 0f; touchSmoothY = 0f
+            if (shared != null) {
+                currentMode = s.scene.id; previousMode = shared.cue.previousScene
+                transition = ((shared.time - shared.cue.transitionAt) / 600).toFloat().coerceIn(0f, 1f)
+            }
             EGLExt.eglPresentationTimeANDROID(EGL14.eglGetCurrentDisplay(), EGL14.eglGetCurrentSurface(EGL14.EGL_DRAW), presentationNs)
+        } else if (!s.paused) {
+            val response = 1f - exp(-dt / .2f)
+            touchSmoothX += (touchX - touchSmoothX) * response
+            touchSmoothY += (touchY - touchSmoothY) * response
         }
         if (following && (shared == null || shared.dark || shared.cue.diagnostic)) {
             val white = if (shared != null && !shared.dark) shared.motion.flash else 0f
             glClearColor(white, white, white, 1f); glClear(GL_COLOR_BUFFER_BIT)
-        } else if (program != 0) {
-            val motion = shared?.motion ?: beatMotion.update(AudioEngine.rhythm, AudioEngine.levels, System.nanoTime()/1e9, s)
-            glUseProgram(program)
-            glUniform2f(uniforms.getValue("uResolution"), renderWidth.toFloat(), renderHeight.toFloat())
-            glUniform1f(uniforms.getValue("uTime"), time)
-            glUniform1f(uniforms.getValue("uRotation"), rotation)
-            glUniform1f(uniforms.getValue("uColorPhase"), colorPhase)
-            glUniform1f(uniforms.getValue("uMorphTime"), morphTime)
-            glUniform1f(uniforms.getValue("uIntensity"), s.intensity)
-            glUniform1f(uniforms.getValue("uComplexity"), s.complexity)
-            glUniform1f(uniforms.getValue("uSymmetry"), s.symmetry.toFloat())
-            glUniform1f(uniforms.getValue("uDistortion"), s.distortion)
-            glUniform1f(uniforms.getValue("uZoom"), s.zoom)
-            glUniform1f(uniforms.getValue("uLineWidth"), s.lineWidth)
-            glUniform1f(uniforms.getValue("uHue"), s.hue)
-            glUniform1f(uniforms.getValue("uSaturation"), s.saturation)
-            glUniform1f(uniforms.getValue("uContrast"), s.contrast)
-            glUniform2f(uniforms.getValue("uTouch"), touchSmoothX, touchSmoothY)
-            glUniform1i(uniforms.getValue("uMode"), currentMode)
-            glUniform1i(uniforms.getValue("uPreviousMode"), previousMode)
-            glUniform1f(uniforms.getValue("uTransition"), transition)
-            glUniform1i(uniforms.getValue("uPalette"), s.palette.ordinal)
-            glUniform4f(uniforms.getValue("uRhythm"), motion.beat, motion.bar, motion.flow, motion.texture)
-            glUniform2f(uniforms.getValue("uDownbeat"), motion.flash, motion.inversion)
-            val liveFractal = !following && AudioEngine.status.value.running && s.audioEnabled
-            val levels = AudioEngine.levels
-            for (i in 0..2) {
-                val target = if (liveFractal) (when (i) { 0 -> levels.bass; 1 -> levels.mid; else -> levels.high } * s.audioAmount).coerceIn(0f, 2f) else 0f
-                if (!liveFractal) fractalBands[i] = 0f
-                else if (!s.paused) {
-                    val response = if (target > fractalBands[i]) .045f else .22f
-                    fractalBands[i] += (target - fractalBands[i]) * (1f - exp(-dt / response))
-                }
+        } else drawLayer(layer, s, dt, following, shared, renderWidth, renderHeight)
+        if (!following && fade < 1f) {
+            outgoing?.let { old ->
+                post?.beginOutgoing(renderWidth, renderHeight)
+                drawLayer(old, old.settings.keepingSession(s), dt, false, null, renderWidth, renderHeight)
             }
-            glUniform3f(uniforms.getValue("uFractalBands"), fractalBands[0], fractalBands[1], fractalBands[2])
-            glUniform1i(uniforms.getValue("uFractalShape"), s.kaleidoscopeShape)
-            glUniform1f(uniforms.getValue("uFractalSpace"), s.kaleidoscopeSpace)
-            if (!s.paused) equalizerMotion.update(
-                if (!following && AudioEngine.status.value.running && s.audioEnabled) AudioEngine.levels.spectrum else silentSpectrum,
-                s.eqBuckets, dt, s.eqGain*s.audioAmount, s.eqFalloff, s.eqPeakHold)
-            glUniform1fv(uniforms.getValue("uSpectrum"), 64, equalizerMotion.bars, 0)
-            glUniform1fv(uniforms.getValue("uPeaks"), 64, equalizerMotion.peaks, 0)
-            glUniform1i(uniforms.getValue("uEqCount"), s.eqBuckets)
-            glUniform1f(uniforms.getValue("uEqSpacing"), s.eqSpacing)
-            glUniform1i(uniforms.getValue("uEqMirror"), if (s.eqMirror) 1 else 0)
-            glUniform1i(uniforms.getValue("uEqRadial"), if (s.eqRadial) 1 else 0)
-            glUniform1i(uniforms.getValue("uEqSegments"), if (s.eqSegments) 1 else 0)
-            glDrawArrays(GL_TRIANGLE_STRIP, 0, 4)
-        } else { glClearColor(0.03f, 0.03f, 0.08f, 1f); glClear(GL_COLOR_BUFFER_BIT) }
-        post?.finish(if (following) PostEffects() else s.effects)
+            val amount = fade * fade * (3f - 2f * fade)
+            post?.mixScenes(amount, frozenOutgoing)
+            displayedEffects = blendEffects(fadeEffects, s.effects, amount)
+            fade = (fade + dt / fadeSeconds).coerceAtMost(1f)
+        } else {
+            outgoing = null; frozenOutgoing = false
+            displayedEffects = if (following) PostEffects() else s.effects
+        }
+        post?.finish(displayedEffects)
         post?.present(viewportWidth, viewportHeight)
         recording?.let { target ->
             try {
@@ -342,5 +325,64 @@ class PrismRenderer(private val context: Context, private val onError: (String) 
         val frameMs = if (s.paused && recording == null) 100L else (1000L / targetFps)
         val elapsedMs = (SystemClock.elapsedRealtimeNanos() - started) / 1_000_000L
         if (!following && elapsedMs < frameMs) SystemClock.sleep(frameMs - elapsedMs)
+    }
+    private fun drawLayer(layer: Layer, s: VisualSettings, dt: Float, following: Boolean,
+                          shared: CrowdFrame?, renderWidth: Int, renderHeight: Int) {
+        if (following && shared != null) {
+            val seconds = (shared.time / 1000).toFloat()
+            layer.time = seconds * s.speed; layer.rotation = seconds * s.rotation * .3f
+            layer.colorPhase = seconds * s.colorSpeed; layer.morphTime = seconds * s.morph
+        } else if (!following && !s.paused) {
+            layer.time += dt * s.speed; layer.rotation += dt * s.rotation * .3f
+            layer.colorPhase += dt * s.colorSpeed; layer.morphTime += dt * s.morph
+        }
+        if (program == 0) { glClearColor(.03f, .03f, .08f, 1f); glClear(GL_COLOR_BUFFER_BIT); return }
+            val motion = shared?.motion ?: layer.beatMotion.update(AudioEngine.rhythm, AudioEngine.levels, System.nanoTime()/1e9, s)
+            glUseProgram(program)
+            glUniform2f(uniforms.getValue("uResolution"), renderWidth.toFloat(), renderHeight.toFloat())
+            glUniform1f(uniforms.getValue("uTime"), layer.time)
+            glUniform1f(uniforms.getValue("uRotation"), layer.rotation)
+            glUniform1f(uniforms.getValue("uColorPhase"), layer.colorPhase)
+            glUniform1f(uniforms.getValue("uMorphTime"), layer.morphTime)
+            glUniform1f(uniforms.getValue("uIntensity"), s.intensity)
+            glUniform1f(uniforms.getValue("uComplexity"), s.complexity)
+            glUniform1f(uniforms.getValue("uSymmetry"), s.symmetry.toFloat())
+            glUniform1f(uniforms.getValue("uDistortion"), s.distortion)
+            glUniform1f(uniforms.getValue("uZoom"), s.zoom)
+            glUniform1f(uniforms.getValue("uLineWidth"), s.lineWidth)
+            glUniform1f(uniforms.getValue("uHue"), s.hue)
+            glUniform1f(uniforms.getValue("uSaturation"), s.saturation)
+            glUniform1f(uniforms.getValue("uContrast"), s.contrast)
+            glUniform2f(uniforms.getValue("uTouch"), touchSmoothX, touchSmoothY)
+            glUniform1i(uniforms.getValue("uMode"), s.scene.id)
+            glUniform1i(uniforms.getValue("uPreviousMode"), if (following) previousMode else s.scene.id)
+            glUniform1f(uniforms.getValue("uTransition"), if (following) transition else 1f)
+            glUniform1i(uniforms.getValue("uPalette"), s.palette.ordinal)
+            glUniform4f(uniforms.getValue("uRhythm"), motion.beat, motion.bar, motion.flow, motion.texture)
+            glUniform2f(uniforms.getValue("uDownbeat"), motion.flash, motion.inversion)
+            val liveFractal = !following && AudioEngine.status.value.running && s.audioEnabled
+            val levels = AudioEngine.levels
+            for (i in 0..2) {
+                val target = if (liveFractal) (when (i) { 0 -> levels.bass; 1 -> levels.mid; else -> levels.high } * s.audioAmount).coerceIn(0f, 2f) else 0f
+                if (!liveFractal) layer.fractalBands[i] = 0f
+                else if (!s.paused) {
+                    val response = if (target > layer.fractalBands[i]) .045f else .22f
+                    layer.fractalBands[i] += (target - layer.fractalBands[i]) * (1f - exp(-dt / response))
+                }
+            }
+            glUniform3f(uniforms.getValue("uFractalBands"), layer.fractalBands[0], layer.fractalBands[1], layer.fractalBands[2])
+            glUniform1i(uniforms.getValue("uFractalShape"), s.kaleidoscopeShape)
+            glUniform1f(uniforms.getValue("uFractalSpace"), s.kaleidoscopeSpace)
+            if (!s.paused) layer.equalizerMotion.update(
+                if (!following && AudioEngine.status.value.running && s.audioEnabled) AudioEngine.levels.spectrum else silentSpectrum,
+                s.eqBuckets, dt, s.eqGain*s.audioAmount, s.eqFalloff, s.eqPeakHold)
+            glUniform1fv(uniforms.getValue("uSpectrum"), 64, layer.equalizerMotion.bars, 0)
+            glUniform1fv(uniforms.getValue("uPeaks"), 64, layer.equalizerMotion.peaks, 0)
+            glUniform1i(uniforms.getValue("uEqCount"), s.eqBuckets)
+            glUniform1f(uniforms.getValue("uEqSpacing"), s.eqSpacing)
+            glUniform1i(uniforms.getValue("uEqMirror"), if (s.eqMirror) 1 else 0)
+            glUniform1i(uniforms.getValue("uEqRadial"), if (s.eqRadial) 1 else 0)
+            glUniform1i(uniforms.getValue("uEqSegments"), if (s.eqSegments) 1 else 0)
+            glDrawArrays(GL_TRIANGLE_STRIP, 0, 4)
     }
 }

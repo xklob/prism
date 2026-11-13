@@ -53,10 +53,11 @@ fun TuningOverlay(
     appSettings: Boolean = false, switchScope: () -> Unit = {},
     minimized: Boolean = false, onMinimize: () -> Unit = {},
     timingMinimized: Boolean = false, onTimingMinimize: () -> Unit = {},
-    performance: () -> RenderQualityReport = { RenderQualityReport() }
+    performance: () -> RenderQualityReport = { RenderQualityReport() }, looks: LookLibrary
 ) {
-    val tabs = if (appSettings) listOf("Audio", "Song", "Effects", "Display") else listOf(s.scene.shapeTab, "Color", s.scene.motionTab, "Beat")
-    var tab by rememberSaveable(appSettings, s.scene) { mutableStateOf(initialTab.takeIf { it in tabs } ?: tabs.first()) }
+    val tabs = if (appSettings) listOf("Audio", "Song", "Effects", "Display", "Diagnostics") else listOf(s.scene.shapeTab, "Color", s.scene.motionTab, "Beat", "Looks")
+    var tab by rememberSaveable(appSettings) { mutableStateOf(initialTab.takeIf { it in tabs } ?: tabs.first()) }
+    LaunchedEffect(s.scene) { if (tab !in tabs) tab = tabs.first() }
     val contentScroll = key(appSettings, s.scene, tab) { rememberScrollState() }
     var hidden by rememberSaveable { mutableStateOf(false) }
     var activeControl by remember { mutableStateOf<String?>(null) }
@@ -132,6 +133,8 @@ fun TuningOverlay(
                             OverlaySlider(label, value, range, formatted, steps, activeControl, ::editing, set)
                         }
                         when (tab) {
+                            "Looks" -> LookControls(looks, s.scene)
+                            "Diagnostics" -> TimingDiagnosticsControls(status.running)
                             "Song" -> SongControls(songAssistant, showManualTiming = !tablet)
                             "Effects" -> EffectsControls(s, change, activeControl, ::editing)
                             "Display" -> {

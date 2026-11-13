@@ -35,10 +35,16 @@ internal class PostProcessor(context: Context) : AutoCloseable {
         }
     }
     private val scene = Target()
+    private val outgoing = Target(); private val mixed = Target(); private val frozen = Target()
+    private var source = scene
     private val output = Target()
     private val blurA = Target(); private val blurB = Target()
     private val bloomA = Target(); private val bloomB = Target()
     private var final = scene
+    private val mixProgram = program(context, "shaders/post_mix.frag")
+    private val mixFrom = glGetUniformLocation(mixProgram, "uFrom")
+    private val mixTo = glGetUniformLocation(mixProgram, "uTo")
+    private val mixAmount = glGetUniformLocation(mixProgram, "uAmount")
     private val blurProgram = program(context, "shaders/post_blur.frag")
     private val compositeProgram = program(context, "shaders/post_composite.frag")
     private val blurImage = glGetUniformLocation(blurProgram, "uImage")
@@ -50,35 +56,54 @@ internal class PostProcessor(context: Context) : AutoCloseable {
     private val blurAmount = glGetUniformLocation(compositeProgram, "uBlurAmount")
     private val bloomAmount = glGetUniformLocation(compositeProgram, "uBloomAmount")
 
-    fun begin(width: Int, height: Int) { glActiveTexture(GL_TEXTURE0); scene.resize(width, height); scene.bind() }
+    fun begin(width: Int, height: Int) { glActiveTexture(GL_TEXTURE0); scene.resize(width, height); scene.bind(); source = scene }
+
+    fun beginOutgoing(width: Int, height: Int) { outgoing.resize(width, height); outgoing.bind() }
+    fun freezeScene(): Boolean {
+        if (source.width == 0) return false
+        frozen.resize(source.width, source.height)
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, source.framebuffer)
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, frozen.framebuffer)
+        glBlitFramebuffer(0, 0, source.width, source.height, 0, 0, frozen.width, frozen.height, GL_COLOR_BUFFER_BIT, GL_NEAREST)
+        return true
+    }
+    fun mixScenes(amount: Float, useFrozen: Boolean = false) {
+        mixed.resize(scene.width, scene.height); mixed.bind()
+        glUseProgram(mixProgram)
+        glUniform1i(mixFrom, 0); glUniform1i(mixTo, 1); glUniform1f(mixAmount, amount.coerceIn(0f, 1f))
+        glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, if (useFrozen) frozen.texture else outgoing.texture)
+        glActiveTexture(GL_TEXTURE1); glBindTexture(GL_TEXTURE_2D, scene.texture)
+        glDrawArrays(GL_TRIANGLE_STRIP, 0, 4); glActiveTexture(GL_TEXTURE0)
+        source = mixed
+    }
 
     fun finish(fx: PostEffects) {
-        final = scene
+        final = source
         if (!fx.active) return
         val divisor = when (fx.quality) { 0 -> 8; 2 -> 2; else -> 4 }
-        val width = (scene.width / divisor).coerceAtLeast(1)
-        val height = (scene.height / divisor).coerceAtLeast(1)
+        val width = (source.width / divisor).coerceAtLeast(1)
+        val height = (source.height / divisor).coerceAtLeast(1)
         fun blurred(a: Target, b: Target, radius: Float, cutoff: Float) {
             a.resize(width, height); b.resize(width, height)
             glUseProgram(blurProgram); glUniform1i(blurImage, 0)
             glActiveTexture(GL_TEXTURE0)
-            a.bind(); glBindTexture(GL_TEXTURE_2D, scene.texture)
+            a.bind(); glBindTexture(GL_TEXTURE_2D, source.texture)
             // Radius is defined in image space, so quality presets preserve the look.
             val pixels = 1f + radius.coerceIn(0f, 1f) * 36f
-            glUniform2f(blurStep, pixels / scene.width, 0f); glUniform1f(threshold, cutoff)
+            glUniform2f(blurStep, pixels / source.width, 0f); glUniform1f(threshold, cutoff)
             glDrawArrays(GL_TRIANGLE_STRIP, 0, 4)
             b.bind(); glBindTexture(GL_TEXTURE_2D, a.texture)
-            glUniform2f(blurStep, 0f, pixels / scene.height); glUniform1f(threshold, -1f)
+            glUniform2f(blurStep, 0f, pixels / source.height); glUniform1f(threshold, -1f)
             glDrawArrays(GL_TRIANGLE_STRIP, 0, 4)
         }
         if (fx.blur > 0f) blurred(blurA, blurB, fx.blurRadius, -1f)
         if (fx.bloom > 0f) blurred(bloomA, bloomB, fx.bloomRadius, fx.threshold.coerceIn(0f, 1f))
-        output.resize(scene.width, scene.height); output.bind()
+        output.resize(source.width, source.height); output.bind()
         glUseProgram(compositeProgram)
         glUniform1i(image, 0); glUniform1i(blur, 1); glUniform1i(bloom, 2)
-        glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, scene.texture)
-        glActiveTexture(GL_TEXTURE1); glBindTexture(GL_TEXTURE_2D, if (fx.blur > 0f) blurB.texture else scene.texture)
-        glActiveTexture(GL_TEXTURE2); glBindTexture(GL_TEXTURE_2D, if (fx.bloom > 0f) bloomB.texture else scene.texture)
+        glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, source.texture)
+        glActiveTexture(GL_TEXTURE1); glBindTexture(GL_TEXTURE_2D, if (fx.blur > 0f) blurB.texture else source.texture)
+        glActiveTexture(GL_TEXTURE2); glBindTexture(GL_TEXTURE_2D, if (fx.bloom > 0f) bloomB.texture else source.texture)
         glUniform1f(blurAmount, (fx.blur * fx.strength).coerceIn(0f, 1f))
         glUniform1f(bloomAmount, (fx.bloom * fx.strength).coerceIn(0f, 2f))
         glDrawArrays(GL_TRIANGLE_STRIP, 0, 4)
@@ -95,8 +120,8 @@ internal class PostProcessor(context: Context) : AutoCloseable {
     }
 
     override fun close() {
-        listOf(scene, output, blurA, blurB, bloomA, bloomB).forEach { it.close() }
-        glDeleteProgram(blurProgram); glDeleteProgram(compositeProgram)
+        listOf(scene, outgoing, mixed, frozen, output, blurA, blurB, bloomA, bloomB).forEach { it.close() }
+        glDeleteProgram(blurProgram); glDeleteProgram(compositeProgram); glDeleteProgram(mixProgram)
     }
 
     companion object {

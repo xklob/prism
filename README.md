@@ -4,7 +4,7 @@
 
 A native Android psychedelic visualizer. Kotlin, Jetpack Compose, and seven OpenGL ES 3 patterns. Android 10 or newer.
 
-[Download prism 1.12.0](https://github.com/xklob/prism/releases/tag/v1.12.0) for global bloom/blur effects, adaptive rendering quality, persistent playback controls, and session recording.
+[Download prism 1.13.0](https://github.com/xklob/prism/releases/tag/v1.13.0) for named looks, phrase cues, timing diagnostics, global effects, and session recording.
 
 ## Screenshots
 
@@ -36,7 +36,7 @@ These two views are unedited 1.12 Android 16 emulator captures with bloom and bl
 
 ## Crowd mode
 
-prism includes a Windows controller that uses the computer's own Wi-Fi card through Mobile Hotspot. Install the APK on the phones, extract the Windows controller ZIP from the [release](https://github.com/xklob/prism/releases/tag/v1.10.0), and double-click **Start-Prism.cmd**. The local dashboard provides audience invitations, a shared tempo and bar clock, six geometric patterns, scheduled flashes and color inversion, and per-phone timing diagnostics.
+prism includes a Windows controller that uses the computer's own Wi-Fi card through Mobile Hotspot. Install the APK on the phones, extract the Windows controller ZIP from the [release](https://github.com/xklob/prism/releases/latest), and double-click **Start-Prism.cmd**. The local dashboard provides audience invitations, a shared tempo and bar clock, six geometric patterns, scheduled flashes and color inversion, and per-phone timing diagnostics.
 
 See [the controller guide](controller/README.md) for setup, audio input, timing limits, and testing. Physical multi-phone timing and the laptop's adapter and firewall setup still need field testing. Software clock estimates do not establish physical synchronization between different phone screens.
 
@@ -100,6 +100,33 @@ Video targets 30 fps, preserves the screen's aspect ratio, and uses the largest 
 The renderer completes the pattern and effects once, then sends that same image to the screen and recording encoder. Settings and other overlays stay outside this pipeline. Encoder dimensions remain fixed during recording; reducing render quality reduces image detail, not the exported video's dimensions. Crowd shows retain the controller's visual output without local post-effects.
 
 **App settings → Display** provides a 30/60 FPS target and **Adaptive quality**, enabled by default. Sustained low FPS lowers rendering resolution in steps, down to 45% of the base size; recovery requires sustained healthy performance. Android's [thermal status](https://developer.android.com/reference/android/os/PowerManager#getCurrentThermalStatus()) can cap quality sooner. The panel reports the current scale, dimensions, and thermal state. The target is limited by the display and Battery saver, and is not a guaranteed frame rate. Animation speed, capture, and timing analysis remain independent of these quality changes.
+
+## Look library and phrase cues
+
+<p>
+  <img src="docs/screenshots/tablet-look-library.png" width="720" alt="Named visual looks and favorites on a landscape tablet">
+  <img src="docs/screenshots/phone-look-library.png" width="240" alt="The saved look library on a phone">
+</p>
+
+These are unedited 1.13 Android 16 emulator captures, with saved example looks and no audio connected.
+
+Open **Tune → Looks** to save up to 32 named looks. A look includes the pattern, its visual and reaction controls, and global bloom/blur settings. Star favorites, rename, or delete them. The existing per-pattern Save/Recall shortcut remains available separately. Neither path changes the connected source, capture state, tempo, manual alignment, or display preferences.
+
+**PLAY** applies a saved look with a configurable 0–8 second transition. Both outgoing and incoming patterns keep moving and responding during an eased crossfade. Effects fade with the look. If another look interrupts the transition, it starts from the currently visible composite instead of jumping back to the previous pattern. Zero seconds makes a cut. Transitions are included in session recordings and can temporarily cost more to render. Adaptive quality can reduce their pixel cost. Animation pause keeps the patterns still while allowing a requested transition to finish.
+
+**CUE** queues one look for the next future boundary of the tracked 8, 16, or 32 bar phrase. The input must be running with a stable beat, bar, and phrase estimate. Seeks, clock corrections, source changes, stale input, and lost confidence re-arm the cue; they do not count as phrase crossings. An established held tempo can continue the cue through a drumless section. **APPLY NOW** works without detection; **CANCEL** clears the cue. Cues are not restored after restarting prism and do not drive crowd shows. A detected phrase remains an estimate of musical structure; manual phrase alignment gives you control over the origin.
+
+## Beat-grid diagnostics
+
+![Beat-grid diagnostics on a landscape tablet](docs/screenshots/tablet-timing-diagnostics.png)
+
+This unedited 1.13 emulator capture uses a synthetic timing fixture to demonstrate the frozen graph. It is not a real-song accuracy measurement.
+
+Open **App settings → Diagnostics** for the last 60 seconds of timing evidence. The graph shows beat and downbeat model predictions alongside vertical lines from the tracked grid, with a separate beat/bar/phrase confidence graph. Choose an 8- or 16-second window, **FREEZE** the view to inspect it, or return to **LIVE VIEW**. Freezing the graph leaves audio analysis, visuals, recording, and cues running. Stopped capture retains the last history; a new capture starts a new history.
+
+The readout includes tempo, meter, phrase position, manual/guided/holding states, conflicts, and the latest matched-beat offset against the tracker’s own grid. These are detector diagnostics, not independently measured accuracy or speaker/screen latency. Confidence describes evidence strength rather than a calibrated probability of correctness.
+
+**EXPORT CSV** saves the retained samples to a location you choose through Android’s file picker. The file includes relative timestamps, grid position, model predictions, confidence, matched-beat offsets, and tracker states. It contains no audio, song title, playback-app identity, or absolute clock times. **CLEAR** removes the retained history without stopping capture.
 
 ## Kaleidoscope
 
@@ -199,6 +226,8 @@ The debug APK is in `app/build/outputs/apk/debug/` and uses package `com.caleb.p
 
 ## Verification
 
+Version 1.13 passed release build/lint and 98 Android unit tests. Phrase-cue tests cover future boundaries, manual alignment, sync offset, missing confidence, held tempo, stale input, discontinuities, and explicit corrections. Diagnostics tests cover bounded history, signed phase offsets, and locale-independent relative-time CSV output. Phone and landscape tablet tests exercise saving, favoriting, renaming, deleting, recalling, queuing, persistence, and CSV export through Android's file picker with readback. GPU checks verify crossfade endpoints, intermediate pixels, interrupted-fade continuity, all-pattern effect bypass, and resized targets. Silent recording through an interrupted preset transition and stereo system-audio recording both passed. The signed APK upgraded 1.12 and passed a separate library/queue/diagnostics smoke test after release shrinking. Physical Pixel Tablet behavior remains unverified.
+
 Version 1.12 passed release build/lint and 85 Android unit tests. GPU checks render all seven patterns, compare effect bypass and zero strength pixel-for-pixel with the original image, check visible bloom and blur, and exercise all effect-quality levels and render resizing. Phone and tablet checks cover shared settings persistence and help dismissal. Silent-video and stereo system-audio recording regressions passed with effects enabled. The signed APK upgraded 1.11 with its signing identity and settings intact. Physical-device performance remains unmeasured.
 
 Version 1.11 passed release build/lint, the 82 Android unit tests, and focused phone/tablet media-session tests. Those checks send real previous, play, pause, and next commands to a separate fixture app, including fullscreen use, missing metadata, unsupported actions, finished-track restart, empty queues, destroyed sessions, and permission revocation. Tablet layout checks and a silent-video recording regression also passed. Playback tests keep Song assist and audio capture off.
@@ -259,10 +288,7 @@ Most patterns target native resolution and 60 fps; Kaleidoscope uses a bounded r
 These are proposals, not current features:
 
 - **More effect overlays:** chromatic aberration, grain, and trails alongside the existing bloom and blur.
-- **Named looks and transitions:** a preset library, favorites, and smooth A/B morphing between compatible looks.
-- **Phrase-driven scene changes:** queue a new pattern or palette on a confirmed phrase boundary, with a manual cue button when detection is uncertain.
 - **Live performance controls:** a small set of assignable macros, MIDI/OSC input, and touch gestures for the current pattern.
 - **A deeper Mandelbrot explorer:** selectable destinations, pan/zoom navigation, and a precision strategy for dives beyond the current mobile-safe range.
 - **Recording quality controls:** frame rate, resolution, bitrate, free-space estimates, and a session gallery with thumbnails.
 - **Performance polish:** measure physical Pixel Tablet GPU/thermal behavior and refine the adaptive-quality thresholds for sustained sessions.
-- **Timing review tools:** a compact beat-grid history and exportable diagnostics, making drift, half-time ambiguity, and confidence changes easier to understand.

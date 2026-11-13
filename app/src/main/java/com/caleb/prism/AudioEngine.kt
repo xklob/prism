@@ -30,19 +30,28 @@ object AudioEngine {
     @Volatile var inferenceMs = 0f; private set
     private data class TimingCommand(val action: Int, val time: Double)
     private val commands=ConcurrentLinkedQueue<TimingCommand>()
-    fun tapTempo() { commands.add(TimingCommand(0,System.nanoTime()/1e9)) }
-    fun alignBar() { commands.add(TimingCommand(1,System.nanoTime()/1e9)) }
-    fun automaticTiming() { commands.add(TimingCommand(2,System.nanoTime()/1e9)) }
-    fun halfTempo() { commands.add(TimingCommand(3,System.nanoTime()/1e9)) }
-    fun doubleTempo() { commands.add(TimingCommand(4,System.nanoTime()/1e9)) }
-    fun alignPhrase() { commands.add(TimingCommand(5,System.nanoTime()/1e9)) }
-    fun automaticPhrase() { commands.add(TimingCommand(6,System.nanoTime()/1e9)) }
-    fun alignBeat() { commands.add(TimingCommand(7,System.nanoTime()/1e9)) }
+    private val manualChanges = java.util.concurrent.atomic.AtomicLong()
+    val manualTimingRevision get() = manualChanges.get()
+    private fun timingCommand(action: Int) {
+        manualChanges.incrementAndGet()
+        commands.add(TimingCommand(action, System.nanoTime()/1e9))
+    }
+    fun tapTempo() = timingCommand(0)
+    fun alignBar() = timingCommand(1)
+    fun automaticTiming() = timingCommand(2)
+    fun halfTempo() = timingCommand(3)
+    fun doubleTempo() = timingCommand(4)
+    fun alignPhrase() = timingCommand(5)
+    fun automaticPhrase() = timingCommand(6)
+    fun alignBeat() = timingCommand(7)
     @Volatile var tempoHint: TempoHint? = null
     @Volatile var songTimingRevision = 0
     @Volatile var phraseBars = 16
     @Volatile var phrase = PhraseState(); private set
     @Volatile private var generation = 0
+    val captureEpoch get() = generation
+    val diagnostics = TimingDiagnostics()
+    @Volatile var timingSample = TimingSample(); private set
     private var recorder: AudioRecord? = null
     private var worker: Thread? = null
     private var captureWatch: CaptureWatch? = null
@@ -112,6 +121,7 @@ object AudioEngine {
             check(active.state == AudioRecord.STATE_INITIALIZED) { "Audio input could not initialize" }
             recorder = active
             val session = ++generation
+            diagnostics.clear(); timingSample = TimingSample()
             val channels = active.channelCount
             val watch = CaptureWatch(context.applicationContext, active, source) { message ->
                 synchronized(this) { if (generation == session) stop(message) }
@@ -191,6 +201,8 @@ object AudioEngine {
                                 // Update first so any grid discontinuity clears the old anchor before manual alignment.
                                 phrase = phraseTracker.update(rhythm, next, phraseBars)
                                 phraseAlignment?.let { phraseTracker.align(rhythm, it); phrase = phraseTracker.update(rhythm, next, phraseBars) }
+                                timingSample = TimingSample(rhythm, phrase, next.energy)
+                                diagnostics.add(timingSample)
                             }
                             if (generation == session) inferenceMs=timing.inferenceMs
                             offset = 0
