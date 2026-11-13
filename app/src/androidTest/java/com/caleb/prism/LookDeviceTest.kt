@@ -58,7 +58,7 @@ class LookDeviceTest {
         val store = SettingsStore(context)
         store.save(VisualSettings.defaults(Scene.WORMHOLE).copy(source = AudioSource.SYSTEM,
             audioEnabled = false, beatsPerBar = 3, syncOffsetMs = 80f, targetFps = 30))
-        store.savePreset("Ocean", VisualSettings.defaults(Scene.AURORA))
+        store.savePreset("Ocean", VisualSettings.defaults(Scene.KALEIDO))
         store.savePreset("Neon", VisualSettings.defaults(Scene.KALEIDOSCOPE).copy(effects = PostEffects(enabled = true, bloom = .5f)))
         launch(); tap("Tune"); tap("Looks"); tap("SAVE NEW")
         val field = device.wait(Until.findObject(By.clazz("android.widget.EditText")), 3000)

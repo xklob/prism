@@ -19,11 +19,11 @@ android {
         applicationId = "com.caleb.prism"
         minSdk = 29
         targetSdk = 36
-        versionCode = 17
-        versionName = "1.13.1"
+        versionCode = 18
+        versionName = "1.14.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
-    buildFeatures { compose = true }
+    buildFeatures { compose = true; aidl = true }
     signingConfigs {
         if (releaseProperties != null) create("release") {
             storeFile = file(requireNotNull(releaseProperties.getProperty("storeFile")))
@@ -52,6 +52,8 @@ android {
 }
 kotlin { jvmToolchain(17) }
 dependencies {
+    implementation("dev.rikka.shizuku:api:13.1.5")
+    implementation("dev.rikka.shizuku:provider:13.1.5")
     implementation(platform("androidx.compose:compose-bom:2026.06.01"))
     implementation("androidx.core:core-ktx:1.17.0")
     implementation("androidx.activity:activity-compose:1.12.4")

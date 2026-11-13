@@ -22,9 +22,9 @@ class PatternTuningDeviceTest {
         val node = device.wait(Until.findObject(By.text(label)), 5000)
         assertNotNull(label, node); node.click(); SystemClock.sleep(250); refresh()
     }
-    private fun launch(scene: Scene) {
+    private fun launch(scene: Scene, audioEnabled: Boolean = false) {
         context.getSharedPreferences("prism", 0).edit().clear().commit()
-        SettingsStore(context).save(VisualSettings.defaults(scene))
+        SettingsStore(context).save(VisualSettings.defaults(scene).copy(audioEnabled = audioEnabled))
         device.wakeUp(); device.setOrientationNatural()
         activity = instrumentation.startActivitySync(Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as MainActivity
         SystemClock.sleep(800); refresh(); click("Tune")
@@ -36,9 +36,9 @@ class PatternTuningDeviceTest {
     @Test fun eachPatternShowsItsOwnControlsAndSharedSettingsStaySeparate() {
         Configurator.getInstance().waitForIdleTimeout = 300
         for ((scene, firstControl) in listOf(
-            Scene.AURORA to "Contour density", Scene.KALEIDO to "Recursion depth", Scene.WORMHOLE to "Ring density",
-            Scene.JULIA to "Fractal iterations", Scene.MANDELBROT to "Fractal iterations",
-            Scene.EQUALIZER to "Frequency bands", Scene.KALEIDOSCOPE to "Fractal detail"
+            Scene.KALEIDO to "Recursion depth", Scene.WORMHOLE to "Ring density",
+            Scene.MANDELBROT to "Fractal iterations",
+            Scene.KALEIDOSCOPE to "Fractal detail"
         )) {
             launch(scene)
             assertTrue("$scene geometry", device.hasObject(By.desc(firstControl)))
@@ -53,15 +53,8 @@ class PatternTuningDeviceTest {
             assertEquals("Opening help must not change a setting", beforeHelp, SettingsStore(context).load())
             assertFalse("Song detection belongs in app settings", device.hasObject(By.text("Song")))
             click(scene.motionTab)
-            if (scene == Scene.JULIA) {
-                assertTrue(device.hasObject(By.desc("Seed evolution")))
-                assertFalse("Julia does not use the travel clock", device.hasObject(By.desc("Travel speed")))
-            }
-            if (scene == Scene.EQUALIZER) {
-                assertTrue(device.hasObject(By.desc("Falloff")))
-                assertTrue(device.hasObject(By.desc("Peak hold")))
-                assertFalse(device.hasObject(By.desc("Rotation")))
-            }
+
+
             assertFalse("Battery saver belongs in app settings", device.hasObject(By.desc("Battery saver")))
             click("App settings"); click("Display")
             assertTrue(device.hasObject(By.desc("Battery saver")))
@@ -75,8 +68,8 @@ class PatternTuningDeviceTest {
     }
     @Test fun tabletPanelsCollapseIndependentlyAndRestoreTheirControls() {
         Assume.assumeTrue(context.resources.configuration.smallestScreenWidthDp >= 600)
-        launch(Scene.EQUALIZER)
-        click("Response")
+        launch(Scene.KALEIDOSCOPE, audioEnabled = true)
+        click("Motion")
         device.findObject(By.desc("Minimize settings")).click(); SystemClock.sleep(250); refresh()
         assertFalse(device.hasObject(By.desc("Tuning panel")))
         assertTrue(device.hasObject(By.desc("Manual timing panel")))
@@ -89,10 +82,10 @@ class PatternTuningDeviceTest {
         val evidence = File(context.getExternalFilesDir(null), "review").apply { mkdirs() }
         device.takeScreenshot(File(evidence, "tablet-sidebars-minimized.png"))
         device.findObject(By.desc("Expand settings")).click(); SystemClock.sleep(250); refresh()
-        assertTrue("Selected page survives minimize", device.hasObject(By.desc("Falloff")))
+        assertTrue("Selected page survives minimize", device.hasObject(By.desc("Camera drift")))
         assertFalse(device.hasObject(By.desc("Manual timing panel")))
         device.findObject(By.desc("Expand timing")).click(); SystemClock.sleep(250); refresh()
         assertTrue(device.hasObject(By.desc("Manual timing panel")))
-        device.takeScreenshot(File(evidence, "tablet-equalizer-response.png"))
+        device.takeScreenshot(File(evidence, "tablet-kaleidoscope-motion.png"))
     }
 }

@@ -13,6 +13,7 @@ class PlaybackCaptureService : Service() {
     private var projection: MediaProjection? = null
     private var callback: MediaProjection.Callback? = null
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private var relay = false
     private var shuttingDown = false
 
     override fun onBind(intent: Intent?) = null
@@ -47,13 +48,23 @@ class PlaybackCaptureService : Service() {
             callback = object : MediaProjection.Callback() {
                 override fun onStop() { shutdown("System audio access ended outside prism. Tap Connect audio to reconnect.") }
             }.also { capture.registerCallback(it, Handler(Looper.getMainLooper())) }
-            AudioEngine.startSystem(this, capture)
+            relay = intent.getBooleanExtra("spotifyRelay", false)
+            val sourceUid = if (relay) SpotifyRelay.start() else null
+            AudioEngine.startSystem(this, capture, sourceUid)
             if (!AudioEngine.status.value.running) {
                 val message = AudioEngine.status.value.message
                 shutdown()
                 AudioEngine.report(message ?: "Couldn't start system audio. Try connecting again.")
-            } else scope.launch {
+            } else {
+                if (relay) scope.launch {
+                    while (isActive) {
+                        delay(500)
+                        if (!SpotifyRelay.healthy()) { shutdown("Spotify helper stopped. Start Shizuku and reconnect audio."); break }
+                    }
+                }
+                scope.launch {
                 AudioEngine.status.collect { if (!it.running && !shuttingDown) shutdown() }
+                }
             }
         } catch (_: Exception) {
             shutdown()
@@ -67,6 +78,7 @@ class PlaybackCaptureService : Service() {
         shuttingDown = true
         scope.cancel()
         if (AudioEngine.status.value.source == AudioSource.SYSTEM) AudioEngine.stop(message)
+        if (relay) SpotifyRelay.stop()
         callback?.let { projection?.unregisterCallback(it) }
         callback = null
         projection?.stop()

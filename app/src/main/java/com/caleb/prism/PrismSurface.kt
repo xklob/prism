@@ -152,7 +152,7 @@ class PrismRenderer(private val context: Context, private val onError: (String) 
     private var previousFrame = 0L
     internal class Layer(var settings: VisualSettings) {
         var time = 0f; var rotation = 0f; var colorPhase = 0f; var morphTime = 0f
-        val beatMotion = BeatMotion(); val equalizerMotion = EqualizerMotion()
+        val beatMotion = BeatMotion()
         val fractalBands = FloatArray(3)
         fun next(settings: VisualSettings) = Layer(settings).also {
             it.time = time; it.rotation = rotation; it.colorPhase = colorPhase; it.morphTime = morphTime
@@ -212,7 +212,7 @@ class PrismRenderer(private val context: Context, private val onError: (String) 
                 uniforms[name] = glGetUniformLocation(program, name)
             }
             uniforms["uDownbeat"]=glGetUniformLocation(program,"uDownbeat")
-            for (name in listOf("uSpectrum", "uPeaks", "uEqCount", "uEqSpacing", "uEqMirror", "uEqRadial", "uEqSegments", "uFractalBands", "uFractalShape", "uFractalSpace"))
+            for (name in listOf("uFractalBands", "uFractalShape", "uFractalSpace"))
                 uniforms[name] = glGetUniformLocation(program, name)
             val vertices = ByteBuffer.allocateDirect(32).order(ByteOrder.nativeOrder()).asFloatBuffer()
                 .put(floatArrayOf(-1f, -1f, 1f, -1f, -1f, 1f, 1f, 1f)).apply { position(0) }
@@ -373,16 +373,6 @@ class PrismRenderer(private val context: Context, private val onError: (String) 
             glUniform3f(uniforms.getValue("uFractalBands"), layer.fractalBands[0], layer.fractalBands[1], layer.fractalBands[2])
             glUniform1i(uniforms.getValue("uFractalShape"), s.kaleidoscopeShape)
             glUniform1f(uniforms.getValue("uFractalSpace"), s.kaleidoscopeSpace)
-            if (!s.paused) layer.equalizerMotion.update(
-                if (!following && AudioEngine.status.value.running && s.audioEnabled) AudioEngine.levels.spectrum else silentSpectrum,
-                s.eqBuckets, dt, s.eqGain*s.audioAmount, s.eqFalloff, s.eqPeakHold)
-            glUniform1fv(uniforms.getValue("uSpectrum"), 64, layer.equalizerMotion.bars, 0)
-            glUniform1fv(uniforms.getValue("uPeaks"), 64, layer.equalizerMotion.peaks, 0)
-            glUniform1i(uniforms.getValue("uEqCount"), s.eqBuckets)
-            glUniform1f(uniforms.getValue("uEqSpacing"), s.eqSpacing)
-            glUniform1i(uniforms.getValue("uEqMirror"), if (s.eqMirror) 1 else 0)
-            glUniform1i(uniforms.getValue("uEqRadial"), if (s.eqRadial) 1 else 0)
-            glUniform1i(uniforms.getValue("uEqSegments"), if (s.eqSegments) 1 else 0)
             glDrawArrays(GL_TRIANGLE_STRIP, 0, 4)
     }
 }

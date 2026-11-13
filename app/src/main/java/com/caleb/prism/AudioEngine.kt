@@ -86,7 +86,7 @@ object AudioEngine {
         }
     }
 
-    fun startSystem(context: Context, projection: MediaProjection) {
+    fun startSystem(context: Context, projection: MediaProjection, excludedUid: Int? = null) {
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             report("Audio permission was revoked. Allow audio access and reconnect."); return
         }
@@ -94,7 +94,8 @@ object AudioEngine {
             val capture = AudioPlaybackCaptureConfiguration.Builder(projection)
                 .addMatchingUsage(AudioAttributes.USAGE_MEDIA)
                 .addMatchingUsage(AudioAttributes.USAGE_GAME)
-                .addMatchingUsage(AudioAttributes.USAGE_UNKNOWN).build()
+                .addMatchingUsage(AudioAttributes.USAGE_UNKNOWN)
+                .apply { if (excludedUid != null) excludeUid(excludedUid) }.build()
             fun create(channels: Int) = AudioRecord.Builder().setAudioPlaybackCaptureConfig(capture)
                 .setAudioFormat(format(channels)).setBufferSizeInBytes(bufferSize(channels)).build()
             val stereo = runCatching { create(2) }.getOrNull()

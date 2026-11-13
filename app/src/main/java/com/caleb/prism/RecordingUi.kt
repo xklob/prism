@@ -53,6 +53,7 @@ fun SessionRecordControl(state: RecordingState, activeSource: AudioSource?, conn
                 RecordingPhase.CONNECTING, RecordingPhase.PREPARING -> "CANCEL // PREPARING"
                 else -> "RECORD SESSION"
             }, fontSize = 11.sp)
+            if (state.busy && state.format != null) Text(state.format, fontSize = 9.sp)
             Text(if (connecting) "Connecting audio…" else source?.label ?: "Silent video", fontSize = 10.sp,
                 color = Color(0xFFBFC1D4))
         }

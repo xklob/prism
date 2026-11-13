@@ -77,9 +77,6 @@ class ShaderProbe(context: Context, private val evidence: File, private val widt
         glUniform2f(glGetUniformLocation(program, "uDownbeat"), audio.flash, audio.inversion)
         glUniform1fv(glGetUniformLocation(program,"uSpectrum"),64,spectrum,0)
         glUniform1fv(glGetUniformLocation(program,"uPeaks"),64,FloatArray(64),0)
-        i("uEqCount",s.eqBuckets); f("uEqSpacing",s.eqSpacing)
-        i("uEqMirror",if (s.eqMirror) 1 else 0); i("uEqRadial",if (s.eqRadial) 1 else 0)
-        i("uEqSegments",if (s.eqSegments) 1 else 0)
         i("uFractalShape", s.kaleidoscopeShape); f("uFractalSpace", s.kaleidoscopeSpace)
         glUniform3f(glGetUniformLocation(program,"uFractalBands"),fractalBands[0],fractalBands[1],fractalBands[2])
         glDrawArrays(GL_TRIANGLE_STRIP, 0, 4)
@@ -92,41 +89,29 @@ class ShaderProbe(context: Context, private val evidence: File, private val widt
 
     fun verifyLookTransitions() {
         val off = PostEffects()
-        val a = render(Scene.AURORA, MusicalMotion(), fx = off)
+        val a = render(Scene.KALEIDO, MusicalMotion(), fx = off)
         val b = render(Scene.WORMHOLE, MusicalMotion(), fx = off)
-        render(Scene.AURORA, MusicalMotion(), fx = off, outgoing = true)
+        render(Scene.KALEIDO, MusicalMotion(), fx = off, outgoing = true)
         assertArrayEquals(a, render(Scene.WORMHOLE, MusicalMotion(), fx = off, mix = 0f))
         val middle = render(Scene.WORMHOLE, MusicalMotion(), fx = off, mix = .5f)
         assertTrue(a.indices.all { abs((middle[it].toInt() and 255) - ((a[it].toInt() and 255) + (b[it].toInt() and 255)) / 2.0) <= 1.1 })
         assertTrue(post.freezeScene())
         // Retargeting a running transition must start from its visible composite.
-        assertArrayEquals(middle, render(Scene.JULIA, MusicalMotion(), fx = off, mix = 0f, frozen = true))
-        val c = render(Scene.JULIA, MusicalMotion(), fx = off)
-        assertArrayEquals(c, render(Scene.JULIA, MusicalMotion(), fx = off, mix = 1f, frozen = true))
+        assertArrayEquals(middle, render(Scene.MANDELBROT, MusicalMotion(), fx = off, mix = 0f, frozen = true))
+        val c = render(Scene.MANDELBROT, MusicalMotion(), fx = off)
+        assertArrayEquals(c, render(Scene.MANDELBROT, MusicalMotion(), fx = off, mix = 1f, frozen = true))
         assertArrayEquals(b, render(Scene.WORMHOLE, MusicalMotion(), fx = off, mix = 1f))
         render(Scene.KALEIDOSCOPE, MusicalMotion(), fx = PostEffects(enabled = true), scale = .55f, mix = .5f, frozen = true)
     }
 
     fun verifyNewPatterns() {
-        for (scene in Scene.entries.filter { it != Scene.EQUALIZER })
+        for (scene in Scene.entries)
             save(render(scene,MusicalMotion(),15f),"polished-${scene.name}.png")
         val wide=render(Scene.MANDELBROT,MusicalMotion(),0f)
         val deep=render(Scene.MANDELBROT,MusicalMotion(),24f)
         assertFalse("The Mandelbrot camera must actually zoom",wide.contentEquals(deep))
         save(wide,"mandelbrot-wide.png"); save(deep,"mandelbrot-deep.png")
-        val scene=Scene.EQUALIZER
-        val silence=render(scene,MusicalMotion())
-        val spectrum=FloatArray(64) { if (it in 2..6) .8f else .1f }
-        val bars=render(scene,MusicalMotion(),spectrum=spectrum)
-        assertFalse("Measured frequencies must drive the equalizer",silence.contentEquals(bars))
-        save(bars,"equalizer-bars.png")
-        for (count in listOf(8,16,32,64)) for (radial in listOf(false,true)) {
-            val settings=VisualSettings.defaults(scene).copy(eqBuckets=count,eqMirror=true,eqRadial=radial)
-            val result=render(scene,MusicalMotion(),spectrum=spectrum,s=settings)
-            assertFalse("Bucket count and layout must reach the renderer",bars.contentEquals(result))
-            save(result,"equalizer-$count-${if (radial) "radial" else "mirror"}.png")
-        }
-        assertArrayEquals("No signal restores the same empty spectrum",silence,render(scene,MusicalMotion()))
+
     }
 
     fun verifyPostProcessing() {

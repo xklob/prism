@@ -2,9 +2,9 @@
 
 <img src="docs/icon.svg" width="96" alt="prism RGB mandala icon">
 
-A native Android psychedelic visualizer. Kotlin, Jetpack Compose, and seven OpenGL ES 3 patterns. Android 10 or newer.
+A native Android psychedelic visualizer. Kotlin, Jetpack Compose, and four OpenGL ES 3 patterns. Android 10 or newer.
 
-[Download prism 1.13.1](https://github.com/xklob/prism/releases/tag/v1.13.1) for clearer phone/tablet controls, named looks, phrase cues, global effects, and session recording.
+[Download prism 1.14.0](https://github.com/xklob/prism/releases/tag/v1.14.0) for optional Spotify compatibility through Shizuku, recording at the live visualizer size and frame cadence where supported, and four visual patterns.
 
 ## Screenshots
 
@@ -19,13 +19,13 @@ Phone portrait: the title and controls stay readable over bright visuals. The se
   <img src="docs/screenshots/phone-setting-help.png" width="270" alt="A detailed setting explanation in a tappable help popup on a phone">
 </p>
 
-Tablet sidebars minimize independently; the song and timing monitor stays at bottom left. Equalizer is waiting for audio in this view.
+Tablet sidebars minimize independently; the song and timing monitor stays at bottom left.
 
 ![Both tablet sidebars minimized into edge handles](docs/screenshots/tablet-minimized.png)
 
-These are unedited Android 16 emulator captures at phone and tablet window sizes. The home panels show 1.13.1; the help and minimized-panel views show 1.10. No audio capture is connected in these views. On-screen FPS reflects the emulator, not physical-device performance.
+These are unedited Android 16 emulator captures at phone and tablet window sizes. These views show 1.14.0. No audio capture is connected in these views. On-screen FPS reflects the emulator, not physical-device performance.
 
-Global bloom and blur controls, shared across all seven patterns:
+Global bloom and blur controls, shared across all four patterns:
 
 <p>
   <img src="docs/screenshots/tablet-global-effects.png" width="720" alt="Global effects controls on a landscape tablet">
@@ -36,7 +36,7 @@ These two views are unedited 1.12 Android 16 emulator captures with bloom and bl
 
 ## Crowd mode
 
-prism includes a Windows controller that uses the computer's own Wi-Fi card through Mobile Hotspot. Install the APK on the phones, extract the Windows controller ZIP from the [release](https://github.com/xklob/prism/releases/latest), and double-click **Start-Prism.cmd**. The local dashboard provides audience invitations, a shared tempo and bar clock, six geometric patterns, scheduled flashes and color inversion, and per-phone timing diagnostics.
+prism includes a Windows controller that uses the computer's own Wi-Fi card through Mobile Hotspot. Install the APK on the phones, extract the Windows controller ZIP from the [release](https://github.com/xklob/prism/releases/latest), and double-click **Start-Prism.cmd**. The local dashboard provides audience invitations, a shared tempo and bar clock, four geometric patterns, scheduled flashes and color inversion, and per-phone timing diagnostics.
 
 See [the controller guide](controller/README.md) for setup, audio input, timing limits, and testing. Physical multi-phone timing and the laptop's adapter and firewall setup still need field testing. Software clock estimates do not establish physical synchronization between different phone screens.
 
@@ -44,15 +44,12 @@ See [the controller guide](controller/README.md) for setup, audio input, timing 
 
 | Pattern | Optional audio response |
 | --- | --- |
-| Aurora: interwoven contour fields | Expanding currents, bending contours, shifting detail |
 | Kaleido: recursive mirrored geometry | Pulsing scale, changing folds and nested geometry |
 | Wormhole: an engraved geometric tunnel | Beat-driven depth, bar accents, rhythmic twist |
-| Julia: an evolving Julia fractal | Fractal deformation, breathing scale, shifting contours |
 | Mandelbrot: a smooth logarithmic zoom into the set | Beat-driven scale, bar accents, palette motion |
 | Kaleidoscope: mirrored 3D fractal chambers | Bass, mids, and treble reshape filaments; smooth beat/bar accents |
-| Equalizer: live frequency bars | 8–64 bands, peak hold, mirrored or radial layouts, LED segments |
 
-The six geometric patterns work independently of audio. Equalizer displays the captured frequency spectrum and waits for audio instead of inventing movement. Its audio toggle starts enabled, but capture still requires **Connect audio**. **React to audio** is remembered separately for each pattern. The old Pulse, Strings, and Nova scenes have been removed. No simulated audio signal is used.
+The four patterns work independently of audio. **React to audio** is remembered separately for each pattern. No simulated audio signal is used.
 
 ## Use
 
@@ -71,11 +68,25 @@ System capture continues when you switch to your music app. Allow notifications 
 
 Before connecting, prism warns if Android reports another microphone capture. Cancel leaves the other capture alone. System capture always explains that Android may replace another screen/device-audio sharing session; it does not claim to identify a hidden projection owner. A microphone in another app is not itself a system-capture conflict.
 
-External capture revocation, microphone privacy muting, and an input that stops delivering samples now disconnect cleanly with a reconnect message. Digital silence does not itself end capture. If other apps work but Spotify is silent, a source-app policy or playback-path change is a possibility; previous success does not rule that out. This release does not claim to bypass Spotify’s capture policy. The input panel distinguishes silent samples from very quiet playback. Analysis can boost quiet digital audio and avoid stereo phase cancellation while recordings retain the original stereo samples and volume.
+External capture revocation, microphone privacy muting, and an input that stops delivering samples now disconnect cleanly with a reconnect message. Digital silence does not itself end capture. If other apps work but Spotify is silent, a source-app policy or playback-path change is a possibility; previous success does not rule that out. The optional compatibility mode below uses a separate Shizuku-authorized route for Spotify media. The input panel distinguishes silent samples from very quiet playback. Analysis can boost quiet digital audio and avoid stereo phase cancellation while recordings retain the original stereo samples and volume.
 
-Capture requests continuous 48 kHz, 16-bit PCM, with stereo playback capture where supported. Analysis consumes 20 ms blocks and an overlapping 2,048-sample FFT. This is separate from the display frame rate and the recording’s 30 fps target.
+Capture requests continuous 48 kHz, 16-bit PCM, with stereo playback capture where supported. Analysis consumes 20 ms blocks and an overlapping 2,048-sample FFT. This is separate from the display frame rate and the recording’s negotiated video frame-rate target.
 
 Microphone capture prefers Android's unprocessed input when the device supports it, with voice-recognition input as a fallback. This preserves musical transients without enabling speech-oriented gain control or noise suppression. See [Android's recording guidance](https://developer.android.com/media/platform/mediarecorder).
+
+## Spotify compatibility through Shizuku
+
+If Spotify music remains silent with ordinary **System audio**, open **App settings → Audio**, select **System audio**, and enable **Spotify compatibility**. The same switch is available in the home audio panel. It defaults to off and can be changed while audio is disconnected.
+
+1. Install [Shizuku](https://shizuku.rikka.app/download/) and start it using [wireless debugging](https://shizuku.rikka.app/guide/setup/). Android 13 or newer is required for this prism mode; root is not required. Restart Shizuku after a device reboot.
+2. Play music in the native Spotify app, enable compatibility, and tap **Connect audio** in prism.
+3. Allow prism access to Shizuku and approve Android's device capture prompt. The existing projection prompt is still required.
+
+The helper reroutes only Spotify's media playback into a 48 kHz, 16-bit stereo stream, plays it through the selected local audio output, and makes it available to prism. Spotify remains unmodified. Other apps continue through ordinary system capture. Source filtering prevents the original Spotify stream from being captured a second time when it already permits capture. Calls are outside the helper's media-only routing rule. The helper has no command-execution interface and writes no audio files.
+
+Disconnecting capture, leaving the app's task, revoking capture access, or losing the helper releases the route. The helper also watches the prism process so a terminated client cannot leave its route running. Session recording receives the same active stereo input and continues to exclude the controls.
+
+This targets the system-only capture restriction reported for Spotify. Players that prohibit all system capture can still remain silent. The mode uses hidden Android audio-routing APIs and may vary by Android version, device, or Spotify renderer. The integrated Shizuku path is tested with explicitly labelled synthetic media fixtures on an Android emulator. Capture from Spotify's actual native renderer, Bluetooth routing, physical playback quality, and timing on Pixel Tablet still need device confirmation. See the [reported Spotify renderer regression](https://community.spotify.com/forum/en/discussion/7559908/possible-regression-android-playback-capture-blocked-by-spotifys-native-oboe-renderer) for background; it is a community investigation, not a Spotify confirmation.
 
 ## Playback controls
 
@@ -91,7 +102,7 @@ Recordings save the full visualizer image to **Movies/Prism** as H.264 MP4 files
 
 Recording works with ambient or audio-reactive patterns. The top-right control uses the currently connected microphone or system input without switching sources or asking for capture consent again. With no connected input it records video only, without opening an audio device. To include sound, connect audio before starting. Change patterns, drag the image, adjust tuning, or pause the animation while recording. The input present at the start stays connected until recording stops, even when **React to audio** is off. Input changes are disabled during recording; stop and start a new session to change its soundtrack. Leaving prism, locking the phone, or losing audio capture finishes the current recording. Start a new recording when you return. Normal audio-reactivity capture behavior resumes afterward.
 
-Video targets 30 fps, preserves the screen's aspect ratio, and uses the largest supported encoder size up to a 1,920-pixel longest edge. Orientation locks for the recording. Actual frame rate depends on rendering and encoding capacity. Microphone audio is mono; system audio is stereo where supported. The recorder receives the original 48 kHz PCM before analysis gain, using the same capture clock as the visuals. A common timeline preserves initial silence and capture gaps rather than shifting audio against the video. Pending files are made visible only after all recorded tracks finish successfully; failed exports are removed.
+Video first requests the full visualizer canvas size and the maximum live-rendering rate supported by prism (currently up to 60 fps), bounded by the display refresh rate. It preserves the screen's aspect ratio within the encoder's alignment requirements. If the encoder cannot configure that size/rate, prism tries a lower frame-rate target and then smaller sizes. The recording button shows the actual configured dimensions and frame-rate target. Every live rendered frame is eligible for recording up to that target; prism does not generate extra frames to fill gaps. Orientation locks for the recording. Actual frame rate depends on rendering and encoding capacity. Microphone audio is mono; system audio is stereo where supported. The recorder receives the original 48 kHz PCM before analysis gain, using the same capture clock as the visuals. A common timeline preserves initial silence and capture gaps rather than shifting audio against the video. Pending files are made visible only after all recorded tracks finish successfully; failed exports are removed.
 
 ## Global effects and adaptive quality
 
@@ -152,15 +163,12 @@ Each pattern has its own geometry and motion pages. Only controls used by that r
 
 | Pattern | Geometry page | Motion page |
 | --- | --- | --- |
-| Aurora | **Weave:** contour density, flow harmonics, ribbon warp, field scale, thread width | **Flow:** weave drift, rotation, ribbon evolution |
 | Kaleido | **Mirrors:** recursion depth, mirror segments, fold angle, zoom, edge width | **Motion:** ring drift, rotation, fold evolution |
 | Wormhole | **Tunnel:** ring density, facets, twist, scale, engraving width | **Motion:** travel speed, rotation, twist evolution |
-| Julia | **Fractal:** iterations, Julia seed, zoom, contour width | **Evolution:** rotation and seed evolution |
 | Mandelbrot | **Zoom:** iterations, depth, framing, contour width | **Journey:** zoom speed and rotation |
-| Equalizer | **Bars:** bucket count, height, spacing, radial/mirror/LED layout | **Response:** falloff, peak hold, optional radial spin |
 | Kaleidoscope | **Chambers:** shape preset, detail, open space, fold shape, camera zoom, filament thickness | **Motion:** camera drift, rotation, fractal evolution |
 
-Each pattern also has **Color** for palettes, hue, saturation, brightness, contrast, and cycling, plus **Beat** for its relevant audio effects. Beat and bar controls describe the actual effect: tunnel travel, fractal deformation, zoom, folds, or contour expansion. Equalizer does not show unused geometry pulses. **Shuffle** varies settings appropriate to that pattern, including equalizer layouts and Kaleidoscope spaces.
+Each pattern also has **Color** for palettes, hue, saturation, brightness, contrast, and cycling, plus **Beat** for its relevant audio effects. Beat and bar controls describe the actual effect: tunnel travel, fractal deformation, zoom, folds, or contour expansion. **Shuffle** varies settings appropriate to that pattern, including Kaleidoscope spaces.
 
 Tap **ⓘ** beside a setting for a detailed tooltip explaining its effect and tradeoffs. Help stays open until dismissed, supports hover/long press, and does not change the setting. Geometry, motion, color, audio effects, input, song assistance, display, saved looks, and manual timing controls all have contextual help.
 
@@ -176,13 +184,13 @@ On beat 1 of an established bar, **Downbeat flash** adds a 35 ms white strobe an
 
 Automatic tracking requires spectral changes in the input. A steady tone does not become a repeating visual beat; an already-established clock can continue across a drumless section.
 
-**Reaction strength** scales all modulation, including values above 100%. Set it to zero for the original ambient image, or disable **React to audio** to also stop capture. Beat, bar, and breathing amounts are independent; **Pulse length** is measured in beats so it follows tempo. The optional **Extra audio texture** adds a little treble-dependent detail and defaults to zero. Raw volume does not drive the geometric patterns' default movement; Equalizer intentionally follows the live spectrum.
+**Reaction strength** scales all modulation, including values above 100%. Set it to zero for the original ambient image, or disable **React to audio** to also stop capture. Beat, bar, and breathing amounts are independent; **Pulse length** is measured in beats so it follows tempo. The optional **Extra audio texture** adds a little treble-dependent detail and defaults to zero. Raw volume does not drive the geometric patterns' default movement.
 
 Automatic tempo estimates use a rolling 12-second history weighted by recency and evidence strength. Missing beats do not contribute zero-tempo votes. Once the rate is stable, an audible drumless bridge retains beat and established bar confidence for up to eight bars, extended to 32 bars when the current song lookup agrees. Weak isolated notes do not erase that history. Strong contradictory onsets still trigger recovery, and genuine silence, track changes, seeks, source changes, or stopped capture invalidate stale timing. Confidence decays after the bounded hold expires. Song BPM does not manufacture a bar or phrase origin.
 
 Automatic timing can be ambiguous, especially with syncopation, sparse drums, tempo changes, or unusual meters. The automatic tempo search covers 60–200 BPM and 3/4 or 4/4 meter. Tap **Tap tempo** at least three times to set tempo manually, select **3** or **4** if needed, and tap **Bar starts here** on the first beat. **½ BPM** and **2× BPM** correct half/double-time interpretations. **Beat starts here** corrects beat phase without relabeling the bar. **Auto timing** hands the current manual tempo, beat phase, and bar alignment to all automatic estimators with high initial confidence; it no longer discards that work. A bounded tempo and bar prior favors the manual grid initially, then fades over eight bars while live evidence refines it. The selected meter remains in effect. Manual timing applies only to the active capture session. **Sync offset** advances the visual for positive values and delays it for negative values, up to 250 ms, to compensate for playback routing such as Bluetooth. Input gain boosts quiet recordings automatically and can be adjusted further.
 
-Each scene remembers its own settings. **Shuffle** makes a new visual variation without changing capture or playback state. **Save** stores one favorite look per scene, including its reaction settings; **Recall** restores it; **Reset** returns that scene to its defaults. None of these actions changes the audio enable switch or starts capture. Existing visual preferences migrate automatically. Julia retains its original stable ID; an installation last using a removed scene starts on Aurora with audio disabled. Saved looks do not contain capture permission tokens.
+Each scene remembers its own settings. **Shuffle** makes a new visual variation without changing capture or playback state. **Save** stores one favorite look per scene, including its reaction settings; **Recall** restores it; **Reset** returns that scene to its defaults. None of these actions changes the audio enable switch or starts capture. Existing visual preferences migrate automatically. The remaining patterns keep their stable IDs. Installations and named looks that referenced Aurora, Julia, or Equalizer migrate to Kaleido, preserving named-look titles and favorites. Saved looks do not contain capture permission tokens.
 
 Contours use pixel-width antialiasing; optional bloom and blur are applied afterward. Most patterns render at the screen's native resolution; Kaleidoscope uses the size cap described above. AudioLabs (<https://audiolabs.dev>) was inspected as a reference for visual density and detailed controls; prism's shaders and Android UI are original implementations.
 
@@ -226,6 +234,8 @@ The debug APK is in `app/build/outputs/apk/debug/` and uses package `com.caleb.p
 
 ## Verification
 
+Version 1.14.0 passed 95 JVM tests, release build/lint, native phone/tablet layout and help checks, saved-look migration, GPU transitions, silent recording, and signed-release smoke checks. The integrated Shizuku helper was exercised with a separately labelled synthetic media app at 44.1/48 kHz, source restarts, capture-policy changes, volume comparison, stereo recording, canceled consent, and helper loss. Recording retained the full 1280 × 800 emulator canvas and followed its rendered cadence. The Windows controller passed ten tests and packaged native-Windows startup, authentication, QR, command, and shutdown checks. See [release details and limits](docs/releases/1.14.0.md). Actual native Spotify capture on Pixel Tablet remains unverified.
+
 Version 1.13.1 passed release build/lint and all 98 unit tests. Native UI checks cover phone portrait, 35% larger text, short phone landscape, tablet layout and rotation, selected-pattern accessibility, audio-control reachability, and separation of playback, recording, FPS, and settings panels. Playback controls and stereo system-audio recording also passed emulator smoke checks. The signed APK upgraded 1.13.0 and passed a saved-look/diagnostics smoke test. These are emulator results; the physical Pixel Tablet layout still needs field confirmation.
 
 Version 1.13 passed release build/lint and 98 Android unit tests. Phrase-cue tests cover future boundaries, manual alignment, sync offset, missing confidence, held tempo, stale input, discontinuities, and explicit corrections. Diagnostics tests cover bounded history, signed phase offsets, and locale-independent relative-time CSV output. Phone and landscape tablet tests exercise saving, favoriting, renaming, deleting, recalling, queuing, persistence, and CSV export through Android's file picker with readback. GPU checks verify crossfade endpoints, intermediate pixels, interrupted-fade continuity, all-pattern effect bypass, and resized targets. Silent recording through an interrupted preset transition and stereo system-audio recording both passed. The signed APK upgraded 1.12 and passed a separate library/queue/diagnostics smoke test after release shrinking. Physical Pixel Tablet behavior remains unverified.
@@ -244,11 +254,11 @@ Physical Pixel Tablet frame rate, thermals, room acoustics, Spotify-specific cap
 
 Unit tests check the exact audio frontend, resampling, tempo/phase/meter tracking, missing beats, weak offbeat hits, detector conflicts, ambiguous bar evidence, tempo and phase changes, quieter sections, confidence decay, silence, manual corrections, monitor states, and beat/bar envelopes. Downbeat tests cover 3- and 4-beat bars at 30/60/120 fps, flash and fade duration, phase jumps, duplicate crossings, pause, and independent effect controls. Learned activations from original musical fixtures cover 96, 128, and 174 BPM. One syncopated 3/4 fixture intentionally checks manual correction of an ambiguous first beat; automatic bar alignment is not assumed to be infallible.
 
-Additional regression cases cover weighted tempo history, drumless bridges with and without catalog assistance, weak irregular notes, clock expiry, manual-to-auto tempo/phase/bar/phrase guidance, resumed phase and tempo changes, live-spectrum bucket mapping and display-rate smoothing, and broad, echoing beat predictions at 80, 96, 125, and 174 BPM; absolute capture-clock offsets; recovery hysteresis; stale repetition; unstructured activations; and the resampler's full passband against independent reference samples. Synthetic fixtures are original. Private recordings and their traces are excluded from source control and both APKs.
+Additional regression cases cover weighted tempo history, drumless bridges with and without catalog assistance, weak irregular notes, clock expiry, manual-to-auto tempo/phase/bar/phrase guidance, resumed phase and tempo changes, and broad, echoing beat predictions at 80, 96, 125, and 174 BPM; absolute capture-clock offsets; recovery hysteresis; stale repetition; unstructured activations; and the resampler's full passband against independent reference samples. Synthetic fixtures are original. Private recordings and their traces are excluded from source control and both APKs.
 
 Song-assistance tests cover playback clocks, seeking and speed changes, exact-recording matching, ambiguous/remix rejection, request budgets, mono/stereo recognition buffers and WAV timestamps, stale/silent input, incorrect tempo priors, manual precedence, phrase uncertainty, repeated structural changes, and loss of bar alignment. `SongDeviceTest` exercises a separate test-app media session through Android's actual notification listener, a live ReccoBeats lookup, seek/pause/speed changes, access revocation, encrypted key storage, and overlay preferences. Its fixture service exists only in the test APK. An opt-in `songNetwork=true` check sends only a synthetic tone and deliberately invalid key to AudD to verify transport and authentication failure handling. It does not establish Spotify/YouTube-specific compatibility or AudD recognition accuracy on real room recordings.
 
-`TabletDeviceTest` checks panel reachability, landscape/portrait separation, fullscreen monitor visibility, the persistent toggle, and saved equalizer settings at Pixel Tablet window dimensions. `PrismDeviceTest` checks Android ONNX against reference predictions, processes a full musical PCM fixture, measures analysis speed and phase error, and exercises actual Android system capture. It also checks capture lifecycle, per-pattern toggles, migration, saved looks, immersive controls, and landscape layout. The shipped shader is rendered at fixed phases to verify distinct beat, bar, and musical-motion effects in all geometric patterns, exact RGB inversion, full-frame white flash, and fade interpolation; audio off must produce exactly the original ambient image. Captured music must produce one flash per 4-beat bar. Pixel comparisons verify that the settings panel preserves the uncovered preview and live adjustments. Evidence is written to the app's external `files/review` directory.
+`TabletDeviceTest` checks panel reachability, landscape/portrait separation, fullscreen monitor visibility, the persistent toggle, and saved visual settings at Pixel Tablet window dimensions. `PrismDeviceTest` checks Android ONNX against reference predictions, processes a full musical PCM fixture, measures analysis speed and phase error, and exercises actual Android system capture. It also checks capture lifecycle, per-pattern toggles, migration, saved looks, immersive controls, and landscape layout. The shipped shader is rendered at fixed phases to verify distinct beat, bar, and musical-motion effects in all geometric patterns, exact RGB inversion, full-frame white flash, and fade interpolation; audio off must produce exactly the original ambient image. Captured music must produce one flash per 4-beat bar. Pixel comparisons verify that the settings panel preserves the uncovered preview and live adjustments. Evidence is written to the app's external `files/review` directory.
 
 The Android pipeline also checks a musical fixture followed by a drumless two-tone bridge and resumed music, and processes a quiet synthetic room recording with delayed reflections and a volume drop. Tempo and phase are checked against the original beat grid. Separate tests reject a steady tone, silence, and unstructured noise.
 
