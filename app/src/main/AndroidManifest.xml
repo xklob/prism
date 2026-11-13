@@ -13,7 +13,7 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-feature android:glEsVersion="0x00030000" android:required="true" />
     <uses-feature android:name="android.hardware.microphone" android:required="false" />
-    <application android:label="Prism" android:icon="@mipmap/ic_launcher"
+    <application android:label="prism" android:icon="@mipmap/ic_launcher"
         android:theme="@style/Theme.Prism" android:allowBackup="false" android:fullBackupContent="false" android:dataExtractionRules="@xml/data_extraction_rules"
         android:supportsRtl="true" android:allowAudioPlaybackCapture="true">
         <activity android:name=".MainActivity" android:exported="true"
@@ -32,7 +32,7 @@
         </activity>
         <service android:name=".PlaybackCaptureService" android:exported="false"
             android:foregroundServiceType="mediaProjection" android:stopWithTask="true" />
-        <service android:name=".NowPlayingListener" android:label="Prism song information"
+        <service android:name=".NowPlayingListener" android:label="prism song information"
             android:exported="false" android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
             <intent-filter><action android:name="android.service.notification.NotificationListenerService" /></intent-filter>
         </service>

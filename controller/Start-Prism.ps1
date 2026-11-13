@@ -16,7 +16,7 @@ function Get-HotspotManager {
     if (-not $profile) {
         $profile = [Windows.Networking.Connectivity.NetworkInformation]::GetConnectionProfiles() | Select-Object -First 1
     }
-    if (-not $profile) { throw 'Windows needs an active connection profile to create Mobile Hotspot. Connect the laptop to Wi-Fi or Ethernet, then retry. The Prism show itself does not require Internet access.' }
+    if (-not $profile) { throw 'Windows needs an active connection profile to create Mobile Hotspot. Connect the laptop to Wi-Fi or Ethernet, then retry. The prism show itself does not require Internet access.' }
     [Windows.Networking.NetworkOperators.NetworkOperatorTetheringManager]::CreateFromConnectionProfile($profile)
 }
 function Wait-WinRT($operation, [Type]$resultType) {
@@ -88,11 +88,11 @@ if (-not (Test-Path $node)) {
     }
 }
 if (-not (Test-Path (Join-Path $controllerRoot 'node_modules/qrcode'))) {
-    throw 'Controller dependencies are missing. Use the complete controller ZIP from the Prism release, or run npm ci in the controller directory.'
+    throw 'Controller dependencies are missing. Use the complete controller ZIP from the prism release, or run npm ci in the controller directory.'
 }
 if (-not $NoFirewall) {
     Get-NetFirewallRule -Name 'Prism-Crowd-UDP' -ErrorAction SilentlyContinue | Remove-NetFirewallRule
-    New-NetFirewallRule -Name 'Prism-Crowd-UDP' -DisplayName 'Prism crowd timing' -Direction Inbound -Action Allow -Protocol UDP -LocalPort $Port -RemoteAddress LocalSubnet -Program $node -Profile Any | Out-Null
+    New-NetFirewallRule -Name 'Prism-Crowd-UDP' -DisplayName 'prism crowd timing' -Direction Inbound -Action Allow -Protocol UDP -LocalPort $Port -RemoteAddress LocalSubnet -Program $node -Profile Any | Out-Null
 }
 $startedHotspot = $false
 $manager = $null
@@ -134,7 +134,7 @@ try {
     }
     if (-not (Test-Path $launchFile)) { throw 'The controller did not finish starting.' }
     if (-not $NoBrowser) { Start-Process (Get-Content $launchFile -Raw) }
-    Write-Host 'Prism is running. Keep this window open. Press Ctrl+C here to end the show.'
+    Write-Host 'prism is running. Keep this window open. Press Ctrl+C here to end the show.'
     Wait-Process -Id $nodeProcess.Id
 } finally {
     if ($nodeProcess -and -not $nodeProcess.HasExited) { Stop-Process -Id $nodeProcess.Id -ErrorAction SilentlyContinue }
@@ -142,7 +142,7 @@ try {
         try {
             $resultType = [Windows.Networking.NetworkOperators.NetworkOperatorTetheringOperationResult,Windows.Networking.NetworkOperators,ContentType=WindowsRuntime]
             Wait-WinRT ($manager.StopTetheringAsync()) $resultType | Out-Null
-        } catch { Write-Warning 'Prism could not stop the hotspot. Turn it off in Windows Settings if it is no longer needed.' }
+        } catch { Write-Warning 'prism could not stop the hotspot. Turn it off in Windows Settings if it is no longer needed.' }
     }
     foreach ($name in $savedEnvironment.Keys) { [Environment]::SetEnvironmentVariable($name, $savedEnvironment[$name]) }
     Remove-Item (Join-Path $runtime 'launch-url.txt') -ErrorAction SilentlyContinue

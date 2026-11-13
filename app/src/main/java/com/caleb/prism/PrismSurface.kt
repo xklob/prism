@@ -15,6 +15,7 @@ import javax.microedition.khronos.egl.EGLConfig
 import javax.microedition.khronos.opengles.GL10
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.exp
 
 class PrismSurface @JvmOverloads constructor(context: Context, onError: (String) -> Unit = {}) : GLSurfaceView(context) {
     val engine = PrismRenderer(context, onError)
@@ -103,7 +104,10 @@ class PrismSurface @JvmOverloads constructor(context: Context, onError: (String)
     private var bufferHeight = 0
     private fun resizeBuffer(w: Int, h: Int, saver: Boolean) {
         if (w == 0 || h == 0) return
-        val scale = if (saver) min(1f, 1080f / max(w, h)) else 1f
+        // The volumetric scene spends more work per pixel. Bound tablet fill cost while
+        // retaining the display aspect ratio; recordings keep their own encoder size.
+        val edge = if (saver) 1080f else if (engine.settings.scene == Scene.KALEIDOSCOPE) 1440f else Float.POSITIVE_INFINITY
+        val scale = min(1f, edge / max(w, h))
         val bw = (w * scale).toInt().coerceAtLeast(1)
         val bh = (h * scale).toInt().coerceAtLeast(1)
         if (bw != bufferWidth || bh != bufferHeight) {
@@ -114,6 +118,7 @@ class PrismSurface @JvmOverloads constructor(context: Context, onError: (String)
 }
 
 class PrismRenderer(private val context: Context, private val onError: (String) -> Unit) : GLSurfaceView.Renderer {
+    private val fractalBands = FloatArray(3)
     internal var recording: RecordingGlTarget? = null
     private var viewportWidth = 1
     private var viewportHeight = 1
@@ -170,7 +175,7 @@ class PrismRenderer(private val context: Context, private val onError: (String) 
                 uniforms[name] = glGetUniformLocation(program, name)
             }
             uniforms["uDownbeat"]=glGetUniformLocation(program,"uDownbeat")
-            for (name in listOf("uSpectrum", "uPeaks", "uEqCount", "uEqSpacing", "uEqMirror", "uEqRadial", "uEqSegments"))
+            for (name in listOf("uSpectrum", "uPeaks", "uEqCount", "uEqSpacing", "uEqMirror", "uEqRadial", "uEqSegments", "uFractalBands", "uFractalShape", "uFractalSpace"))
                 uniforms[name] = glGetUniformLocation(program, name)
             val vertices = ByteBuffer.allocateDirect(32).order(ByteOrder.nativeOrder()).asFloatBuffer()
                 .put(floatArrayOf(-1f, -1f, 1f, -1f, -1f, 1f, 1f, 1f)).apply { position(0) }
@@ -184,7 +189,7 @@ class PrismRenderer(private val context: Context, private val onError: (String) 
         } catch (e: Exception) {
             Log.e("PrismRenderer", "Shader initialization failed", e)
             program = 0
-            onError("This device couldn't start the visual renderer. Try reopening Prism.")
+            onError("This device couldn't start the visual renderer. Try reopening prism.")
         }
     }
 
@@ -258,6 +263,19 @@ class PrismRenderer(private val context: Context, private val onError: (String) 
             glUniform1i(uniforms.getValue("uPalette"), s.palette.ordinal)
             glUniform4f(uniforms.getValue("uRhythm"), motion.beat, motion.bar, motion.flow, motion.texture)
             glUniform2f(uniforms.getValue("uDownbeat"), motion.flash, motion.inversion)
+            val liveFractal = !following && AudioEngine.status.value.running && s.audioEnabled
+            val levels = AudioEngine.levels
+            for (i in 0..2) {
+                val target = if (liveFractal) (when (i) { 0 -> levels.bass; 1 -> levels.mid; else -> levels.high } * s.audioAmount).coerceIn(0f, 2f) else 0f
+                if (!liveFractal) fractalBands[i] = 0f
+                else if (!s.paused) {
+                    val response = if (target > fractalBands[i]) .045f else .22f
+                    fractalBands[i] += (target - fractalBands[i]) * (1f - exp(-dt / response))
+                }
+            }
+            glUniform3f(uniforms.getValue("uFractalBands"), fractalBands[0], fractalBands[1], fractalBands[2])
+            glUniform1i(uniforms.getValue("uFractalShape"), s.kaleidoscopeShape)
+            glUniform1f(uniforms.getValue("uFractalSpace"), s.kaleidoscopeSpace)
             if (!s.paused) equalizerMotion.update(
                 if (!following && AudioEngine.status.value.running && s.audioEnabled) AudioEngine.levels.spectrum else silentSpectrum,
                 s.eqBuckets, dt, s.eqGain*s.audioAmount, s.eqFalloff, s.eqPeakHold)

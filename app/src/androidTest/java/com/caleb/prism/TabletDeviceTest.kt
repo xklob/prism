@@ -28,7 +28,7 @@ class TabletDeviceTest {
         context.getSharedPreferences("prism",0).edit().clear().putInt("scene",scene.id).commit()
         device.wakeUp(); device.setOrientationNatural()
         activity=instrumentation.startActivitySync(Intent(context,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as MainActivity
-        assertTrue(device.wait(Until.hasObject(By.text("PRISM")),10000))
+        assertTrue(device.wait(Until.hasObject(By.text("prism")),10000))
         SystemClock.sleep(900); refresh()
     }
     @After fun cleanup() {
@@ -45,10 +45,11 @@ class TabletDeviceTest {
         val hud=device.findObject(By.desc(monitor)).visibleBounds
         assertFalse("Settings and status must not overlap",android.graphics.Rect.intersects(panel,hud))
         assertTrue("Landscape panel has useful slider width",panel.width()>device.displayWidth*.3)
-        for (tab in listOf("Geometry","Color","Motion","Audio","Song","Display")) {
+        for (tab in listOf("Weave","Color","Flow","Beat")) {
             click(tab)
             assertTrue("Done stays visible in $tab",device.hasObject(By.text("Done")))
         }
+        click("App settings"); click("Display")
         assertTrue(device.takeScreenshot(File(evidence,"tablet-display.png")))
         device.findObject(By.desc("Tablet monitor")).click(); SystemClock.sleep(250); refresh()
         assertFalse(device.hasObject(By.desc(monitor)))
@@ -57,18 +58,18 @@ class TabletDeviceTest {
         device.wait(Until.findObject(By.text("Got it")),1000)?.click()
         SystemClock.sleep(1000); refresh()
         assertFalse(device.hasObject(By.desc(monitor)))
-        device.pressBack(); SystemClock.sleep(400); click("Tune"); click("Display")
+        device.pressBack(); SystemClock.sleep(400); click("App settings"); click("Display")
         device.findObject(By.desc("Tablet monitor")).click(); SystemClock.sleep(300)
-        click("Geometry")
+        click("Aurora settings")
         assertTrue(device.takeScreenshot(File(evidence,"tablet-settings-landscape.png")))
         device.setOrientationLeft(); SystemClock.sleep(900); refresh()
         assertTrue(device.hasObject(By.text("Done")))
         assertFalse("Portrait tablet panels must also remain separate",android.graphics.Rect.intersects(
             device.findObject(By.desc("Tuning panel")).visibleBounds,device.findObject(By.desc(monitor)).visibleBounds))
         assertTrue(device.takeScreenshot(File(evidence,"tablet-settings-portrait.png")))
-        device.setOrientationNatural(); SystemClock.sleep(500); click("Hide")
+        device.setOrientationNatural(); SystemClock.sleep(500); device.findObject(By.desc("Minimize settings")).click(); SystemClock.sleep(300); refresh()
         assertTrue(device.hasObject(By.desc(monitor)))
-        click("Show controls"); click("Done"); click("Immerse")
+        device.findObject(By.desc("Expand settings")).click(); SystemClock.sleep(300); refresh(); click("Done"); click("Immerse")
         SystemClock.sleep(2800); refresh()
         assertTrue(device.hasObject(By.desc(monitor)))
         assertTrue(device.hasObject(By.descStartsWith("Beat confidence")))

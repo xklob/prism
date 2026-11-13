@@ -65,25 +65,34 @@ private val SongAccent = Color(0xFFD9C6FF)
     Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Song assist", style = SongText, modifier = Modifier.weight(1f))
+            SettingHelp("Song assist")
             Switch(state.options.enabled, { assistant.setOptions(state.options.copy(enabled = it)) },
                 Modifier.semantics { contentDescription = "Song assist" })
         }
         Text("Look up song length and BPM with ReccoBeats. Song titles or IDs are sent online; live timing keeps working offline.", style = SongText, color = SongMuted, fontSize = 11.sp)
         SongMonitor(assistant)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+        SettingHelp("Playback info access")
         TextButton(onClick = {
             runCatching {
                 context.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
                 NotificationListenerService.requestRebind(NowPlaying.component(context))
             }
         }) { Text(if (state.notificationAccess) "Playback info access enabled" else "Allow playback info access", style = SongText, color = SongAccent) }
-        Text("For Spotify and YouTube, enable Prism in Android’s Notification access settings. Prism reads media-session metadata, not notification messages.", style = SongText, color = SongMuted, fontSize = 11.sp)
+        }
+        Text("For Spotify and YouTube, enable prism in Android’s Notification access settings. prism reads media-session metadata, not notification messages.", style = SongText, color = SongMuted, fontSize = 11.sp)
         HorizontalDivider(color = Color.White.copy(alpha = .16f))
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Identify audio with AudD", style = SongText, modifier = Modifier.weight(1f), fontSize = 13.sp)
+            SettingHelp("Identify audio with AudD")
             Switch(state.options.recognition, { assistant.setOptions(state.options.copy(recognition = it)) },
                 Modifier.semantics { contentDescription = "Identify audio with AudD" }, enabled = state.options.enabled && state.options.hasKey)
         }
         Text("Optional: sends 8–10 seconds of microphone or captured system audio to AudD. Uses your API key and may incur charges. Checks normally run every 90 seconds, with a 30-second minimum and a 40-request hourly limit.", style = SongText, color = SongMuted, fontSize = 11.sp)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("AudD API key", style = SongText, fontSize = 13.sp)
+            SettingHelp("AudD API key")
+        }
         if (editingKey) {
             OutlinedTextField(token, { token = it.take(256) }, label = { Text("AudD API key") },
                 visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, autoCorrectEnabled = false),
@@ -109,15 +118,18 @@ private val SongAccent = Color(0xFFD9C6FF)
         }
         if (state.options.recognition) Text("${state.requestsRemaining} requests left in the current hourly limit", style = SongText, color = SongMuted, fontSize = 10.sp)
         HorizontalDivider(color = Color.White.copy(alpha = .16f))
-        Text("Phrase length", style = SongText, fontSize = 13.sp)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Phrase length", style = SongText, fontSize = 13.sp)
+            SettingHelp("Phrase length")
+        }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             listOf(8, 16, 32).forEach { bars -> FilterChip(state.options.phraseBars == bars,
                 { assistant.setOptions(state.options.copy(phraseBars = bars)) }, label = { Text("$bars bars") }) }
         }
         PhraseMonitor(phrase)
-        if (showManualTiming) Row {
-            TextButton(onClick = AudioEngine::alignPhrase, enabled = capture.running && timing.locked) { Text("Phrase starts here", color = SongAccent) }
-            TextButton(onClick = AudioEngine::automaticPhrase, enabled = capture.running) { Text("Auto phrase", color = SongAccent) }
+        if (showManualTiming) Column {
+            TimingAction("Phrase starts here", AudioEngine::alignPhrase, capture.running && timing.locked, Modifier.fillMaxWidth())
+            TimingAction("Auto phrase", AudioEngine::automaticPhrase, capture.running, Modifier.fillMaxWidth())
         }
         Text("Phrase estimates use bar-level sound changes and may arrive one bar late. Tap Phrase starts here on a known boundary. Auto phrase uses your alignment as its starting point.", style = SongText, color = SongMuted, fontSize = 11.sp)
         Spacer(Modifier.height(10.dp))

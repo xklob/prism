@@ -55,7 +55,8 @@ class ShaderProbe(context: Context, private val evidence: File, private val widt
     }
 
     private fun render(scene: Scene, audio: MusicalMotion, time: Float = 4f,
-                       spectrum: FloatArray = FloatArray(64), s: VisualSettings = VisualSettings.defaults(scene)): ByteArray {
+                       spectrum: FloatArray = FloatArray(64), s: VisualSettings = VisualSettings.defaults(scene),
+                       fractalBands: FloatArray = FloatArray(3)): ByteArray {
         glUseProgram(program)
         fun f(name: String, value: Float) = glUniform1f(glGetUniformLocation(program, name), value)
         fun i(name: String, value: Int) = glUniform1i(glGetUniformLocation(program, name), value)
@@ -73,6 +74,8 @@ class ShaderProbe(context: Context, private val evidence: File, private val widt
         i("uEqCount",s.eqBuckets); f("uEqSpacing",s.eqSpacing)
         i("uEqMirror",if (s.eqMirror) 1 else 0); i("uEqRadial",if (s.eqRadial) 1 else 0)
         i("uEqSegments",if (s.eqSegments) 1 else 0)
+        i("uFractalShape", s.kaleidoscopeShape); f("uFractalSpace", s.kaleidoscopeSpace)
+        glUniform3f(glGetUniformLocation(program,"uFractalBands"),fractalBands[0],fractalBands[1],fractalBands[2])
         glDrawArrays(GL_TRIANGLE_STRIP, 0, 4)
         val buffer = ByteBuffer.allocateDirect(width * height * 4)
         glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, buffer)
@@ -100,6 +103,33 @@ class ShaderProbe(context: Context, private val evidence: File, private val widt
             save(result,"equalizer-$count-${if (radial) "radial" else "mirror"}.png")
         }
         assertArrayEquals("No signal restores the same empty spectrum",silence,render(scene,MusicalMotion()))
+    }
+
+    fun verifyKaleidoscope() {
+        val scene = Scene.KALEIDOSCOPE
+        val defaults = VisualSettings.defaults(scene)
+        val ambient = render(scene, MusicalMotion())
+        save(ambient, "kaleidoscope-chamber.png")
+        val lit = ambient.indices.count { it % 4 != 3 && (ambient[it].toInt() and 255) > 35 }
+        assertTrue("Fractal filaments must be visible", lit > width * height / 3)
+        assertTrue("Fractal must retain dark space", lit < width * height * 2.7)
+        for (band in 0..2) {
+            val bands = FloatArray(3).also { it[band] = .8f }
+            val active = render(scene, MusicalMotion(), fractalBands = bands)
+            assertFalse("Each frequency range must reshape the fractal", ambient.contentEquals(active))
+            save(active, "kaleidoscope-band-$band.png")
+        }
+        for (shape in 1..2) {
+            val result = render(scene, MusicalMotion(), s = defaults.copy(kaleidoscopeShape = shape))
+            assertFalse("Space presets must change the chamber", ambient.contentEquals(result))
+            save(result, "kaleidoscope-space-$shape.png")
+        }
+        for (s in listOf(defaults.copy(kaleidoscopeSpace = 1.8f), defaults.copy(lineWidth = 2f),
+            defaults.copy(complexity = .1f), defaults.copy(distortion = 1.4f))) {
+            assertFalse("Fractal controls must affect the render", ambient.contentEquals(render(scene, MusicalMotion(), s = s)))
+        }
+        assertFalse("The camera must travel", ambient.contentEquals(render(scene, MusicalMotion(), 18f)))
+        assertArrayEquals("Turning audio off restores the ambient scene", ambient, render(scene, MusicalMotion()))
     }
 
     fun verifyResponse(scene: Scene, input: MusicalMotion, label: String) {

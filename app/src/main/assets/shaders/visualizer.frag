@@ -31,6 +31,9 @@ uniform float uEqSpacing;
 uniform int uEqMirror;
 uniform int uEqRadial;
 uniform int uEqSegments;
+uniform vec3 uFractalBands;
+uniform int uFractalShape;
+uniform float uFractalSpace;
 const float PI = 3.14159265359;
 const float TAU = 6.28318530718;
 
@@ -220,12 +223,64 @@ vec3 julia(vec2 p, float t) {
     return mix(inside, outside, escaped);
 }
 
+// An independently implemented folded wire fractal, inspired by AudioLabs' Kaleidoscope.
+// Distance estimates and a finite ray cone keep the small filaments stable as they recede.
+vec2 chamberField(vec3 position, vec3 shape) {
+    vec3 q = abs(mod(position + 4.0, 8.0) - 4.0);
+    float scale = 1.0;
+    for (int level = 0; level < 7; level++) {
+        q = abs(q);
+        if (q.x < q.y) q.xy = q.yx;
+        if (q.x < q.z) q.xz = q.zx;
+        if (q.y < q.z) q.yz = q.zy;
+        q = q * 1.85 - shape;
+        scale *= 1.85;
+    }
+    vec3 edge = abs(abs(q) - vec3(0.55, 0.38, 0.24));
+    float wire = min(length(edge.xy), min(length(edge.yz), length(edge.xz))) / scale;
+    float room = uFractalSpace * 0.8;
+    float emptySpace = room - length(position);
+    if (uFractalShape == 1) emptySpace = room * 0.55 - abs(position.y);
+    if (uFractalShape == 2) emptySpace = room * 0.65 - max(abs(position.x), abs(position.y));
+    return vec2(max(wire, emptySpace), q.z / (1.0 + abs(q.z)));
+}
+
+vec3 kaleidoscope(vec2 p, float t) {
+    float evolution = uMorphTime * 0.18;
+    vec3 shape = vec3(2.15 + 0.26 * sin(evolution), 1.17 + 0.22 * cos(evolution * 0.71),
+        0.54 + 0.16 * sin(evolution * 0.83 + 1.0));
+    shape += vec3(uDistortion * 0.22, uDistortion * 0.13, uDistortion * 0.11);
+    shape += vec3(uFractalBands.x * 0.12 + uRhythm.y * 0.045,
+        uFractalBands.y * 0.10, uFractalBands.z * 0.07 + uRhythm.z * 0.035);
+    vec3 ray = normalize(vec3(p * 0.82, 1.35));
+    vec3 origin = vec3(0.0, 0.0, sin(t * 0.12) * 0.6);
+    vec3 color = vec3(0.0);
+    float travel = 0.18;
+    float transmission = 1.0;
+    int steps = 32 + int(uComplexity * 40.0);
+    for (int sampleIndex = 0; sampleIndex < 72; sampleIndex++) {
+        if (sampleIndex >= steps || travel > 12.0 || transmission < 0.02) break;
+        vec2 field = chamberField(origin + ray * travel, shape);
+        float cone = max(0.0003, travel * 0.25 / min(uResolution.x, uResolution.y));
+        float thickness = 0.00045 * uLineWidth + cone * 0.35;
+        float filament = exp(-field.x / thickness);
+        float opacity = filament * 0.23;
+        float bandColor = smoothstep(-0.8, 0.8, field.y);
+        vec3 ink = palette(0.08 + bandColor * 0.30 + travel * 0.012);
+        color += transmission * opacity * ink * (1.5 + dot(uFractalBands, vec3(0.3)));
+        transmission *= 1.0 - opacity;
+        travel += max(field.x * 0.78, thickness * 1.4);
+    }
+    return color;
+}
+
 vec3 scene(int mode, vec2 p, float t) {
     if (mode == 0) return aurora(p, t);
     if (mode == 1) return kaleido(p, t);
     if (mode == 2) return wormhole(p, t);
     if (mode == 7) return mandelbrot(p, t);
     if (mode == 8) return equalizer(vUv);
+    if (mode == 9) return kaleidoscope(p, t);
     return julia(p, t);
 }
 void main() {

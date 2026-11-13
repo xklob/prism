@@ -33,20 +33,21 @@ class ReleaseRhythmSmokeTest {
             ?: device.findObjects(By.scrollable(true)).filter { it.visibleBounds.height()>150 }
                 .maxByOrNull { it.visibleBounds.centerX() }
         fun click(text: String) {
+            val selector = if (text in listOf("Record session", "Stop recording")) By.desc(text) else By.text(text)
             instrumentation.uiAutomation.clearCache()
-            var target=device.findObject(By.text(text))
+            var target=device.findObject(selector)
             if (target == null || target.visibleBounds.height()<20) {
                 controls()?.fling(Direction.UP)
                 SystemClock.sleep(200)
                 instrumentation.uiAutomation.clearCache()
-                target=device.findObject(By.text(text))
+                target=device.findObject(selector)
             }
             for (attempt in 0 until 7) {
                 if (target != null && target.visibleBounds.height() >= 20) break
                 controls()?.scroll(Direction.DOWN,.45f)
                 SystemClock.sleep(200)
                 instrumentation.uiAutomation.clearCache()
-                target=device.findObject(By.text(text))
+                target=device.findObject(selector)
             }
             assertNotNull("Visible release action: $text",target)
             assertTrue("Enabled release action: $text",requireNotNull(target).isEnabled)
@@ -55,7 +56,7 @@ class ReleaseRhythmSmokeTest {
         }
         fun launch() {
             context.startActivity(Intent().setClassName(app,"$app.MainActivity").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-            assertTrue(device.wait(Until.hasObject(By.text("PRISM")),10000))
+            assertTrue(device.wait(Until.hasObject(By.text("prism")),10000))
             SystemClock.sleep(500)
         }
         fun audioEnabled(): Boolean {
@@ -86,6 +87,7 @@ class ReleaseRhythmSmokeTest {
         if (!audioEnabled()) device.findObject(By.desc("React to audio")).click()
         click("System audio")
         click("Connect audio")
+        click("CONTINUE")
         val consent=device.wait(Until.findObject(By.res("android:id/button1")),5000)
         assertNotNull(consent)
         consent.click()
@@ -103,7 +105,7 @@ class ReleaseRhythmSmokeTest {
             track.setLoopPoints(0,pcm.size,-1)
             track.play()
             click("Tune")
-            click("Audio")
+            click("App settings")
             waitText("12[6789][.,][0-9] BPM")
             waitText("Beat locked · Bar locked · 4 beats")
             device.takeScreenshot(File(evidence,"release-beat-bar-lock.png"))
@@ -119,8 +121,13 @@ class ReleaseRhythmSmokeTest {
             click("Done")
             val previousVideos=device.executeShellCommand("ls -1 /sdcard/Movies/Prism").lines().toSet()
             click("Record session")
-            click("Start recording")
-            assertTrue("Signed release starts recording shared system audio", device.wait(Until.hasObject(By.text("Stop recording")),10000))
+            val startedDeadline = SystemClock.elapsedRealtime() + 10000
+            while (SystemClock.elapsedRealtime() < startedDeadline) {
+                instrumentation.uiAutomation.clearCache()
+                if (device.hasObject(By.desc("Stop recording"))) break
+                SystemClock.sleep(150)
+            }
+            assertTrue("Signed release starts recording shared system audio", device.hasObject(By.desc("Stop recording")))
             SystemClock.sleep(6000)
             device.takeScreenshot(File(evidence,"release-recording.png"))
             val label=device.findObject(By.text("Immerse"))!!.visibleBounds
@@ -150,9 +157,9 @@ class ReleaseRhythmSmokeTest {
             SystemClock.sleep(1200)
             assertNotEquals("Saved video opens in a player", app, device.currentPackageName)
             device.pressBack()
-            assertTrue(device.wait(Until.hasObject(By.text("PRISM")),5000))
+            assertTrue(device.wait(Until.hasObject(By.text("prism")),5000))
             click("Tune")
-            click("Audio")
+            click("App settings")
             track.pause()
             waitText("Waiting for sound.*")
             // Stop from the main audio panel after leaving the scrollable tuning pane.

@@ -47,7 +47,7 @@ class SongDeviceTest {
         instrumentation.uiAutomation.grantRuntimePermission(context.packageName, Manifest.permission.POST_NOTIFICATIONS)
         device.wakeUp(); device.setOrientationNatural()
         activity = instrumentation.startActivitySync(Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as MainActivity
-        assertTrue(device.wait(Until.hasObject(By.text("PRISM")), 10000))
+        assertTrue(device.wait(Until.hasObject(By.text("prism")), 10000))
         SystemClock.sleep(800)
     }
 
@@ -113,7 +113,7 @@ class SongDeviceTest {
 
     @Test fun songOverlaySettingsPersistAndMissingKeyCannotUpload() {
         launch()
-        click("Tune"); click("Song")
+        click("App settings"); click("Song")
         val toggle = device.wait(Until.findObject(By.desc("Song assist")), 4000)!!
         toggle.click(); SystemClock.sleep(400)
         assertTrue(SongPreferences(context).options().enabled)
@@ -125,7 +125,7 @@ class SongDeviceTest {
         val folder = File(context.getExternalFilesDir(null), "review").apply { mkdirs() }
         device.takeScreenshot(File(folder, "song-phrase-overlay.png"))
         assertFalse(AudioEngine.status.value.running)
-        click("Done"); click("Tune"); click("Song")
+        click("Done"); click("App settings"); click("Song")
         assertTrue(SongPreferences(context).options().enabled)
         assertEquals(8, AudioEngine.phraseBars)
     }

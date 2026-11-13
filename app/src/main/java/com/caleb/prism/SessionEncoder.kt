@@ -32,6 +32,8 @@ internal class SessionEncoder(
     private val failed: (String) -> Unit,
     private val completed: (SavedRecording?, String?) -> Unit
 ) : PcmSink {
+    // Zero channels means a video-only file, without opening an audio device or an AAC codec.
+    private val withAudio = channels > 0
     lateinit var surface: Surface; private set
     var width = 0; private set
     var height = 0; private set
@@ -48,9 +50,9 @@ internal class SessionEncoder(
     private var uri: Uri? = null
     private var name = ""
     private var muxing = false
-    private val tracks = intArrayOf(-1, -1)
-    private val ended = booleanArrayOf(false, false)
-    private val samplesWritten = intArrayOf(0, 0)
+    private val tracks = IntArray(if (withAudio) 2 else 1) { -1 }
+    private val ended = BooleanArray(tracks.size)
+    private val samplesWritten = IntArray(tracks.size)
     private data class Encoded(val track: Int, val data: ByteBuffer, val info: MediaCodec.BufferInfo)
     private val pending = ArrayDeque<Encoded>()
     private var pendingBytes = 0
@@ -61,7 +63,7 @@ internal class SessionEncoder(
     }
 
     override fun accept(samples: ShortArray, firstSampleNs: Long) {
-        if (stopNs != 0L || failure != null) return
+        if (!withAudio || stopNs != 0L || failure != null) return
         if (!audioInput.offer(Input(samples.copyOf(), firstSampleNs))) {
             fail("Recording couldn't keep up with audio. The session was stopped.")
         }
@@ -116,7 +118,7 @@ internal class SessionEncoder(
             }
         }
         check(video != null) { "No compatible video encoder is available" }
-        audio = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_AUDIO_AAC).also {
+        if (withAudio) audio = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_AUDIO_AAC).also {
             it.configure(MediaFormat.createAudioFormat(MediaFormat.MIMETYPE_AUDIO_AAC, 48000, channels).apply {
                 setInteger(MediaFormat.KEY_AAC_PROFILE, MediaCodecInfo.CodecProfileLevel.AACObjectLC)
                 setInteger(MediaFormat.KEY_BIT_RATE, 96_000 * channels)
@@ -141,7 +143,7 @@ internal class SessionEncoder(
         try {
             configure(screenWidth, screenHeight)
             originNs = System.nanoTime()
-            val timeline = RecordingTimeline(channels, originNs)
+            val timeline = if (withAudio) RecordingTimeline(channels, originNs) else null
             ready(this)
             var sentVideoEnd = false
             var sentAudioEnd = false
@@ -153,7 +155,7 @@ internal class SessionEncoder(
                     sentVideoEnd = true
                     finishDeadline = System.nanoTime() + 8_000_000_000L
                 }
-                if (pcm.isEmpty()) {
+                if (timeline != null && pcm.isEmpty()) {
                     val input = audioInput.poll()
                     if (input != null) timeline.append(input.samples, input.timeNs, pcm::addLast)
                     else if (stopNs != 0L && !paddedEnd) {
@@ -161,7 +163,7 @@ internal class SessionEncoder(
                         paddedEnd = true
                     }
                 }
-                if (!sentAudioEnd && (pcm.isNotEmpty() || paddedEnd)) {
+                if (timeline != null && !sentAudioEnd && (pcm.isNotEmpty() || paddedEnd)) {
                     val index = audio!!.dequeueInputBuffer(0)
                     if (index >= 0) {
                         val buffer = audio!!.getInputBuffer(index)!!.order(ByteOrder.LITTLE_ENDIAN)
@@ -179,7 +181,7 @@ internal class SessionEncoder(
                         }
                     }
                 }
-                val output = drain(video!!, 0) or drain(audio!!, 1)
+                val output = drain(video!!, 0) or (audio?.let { drain(it, 1) } ?: false)
                 check(System.nanoTime() < finishDeadline) { "The video encoder didn't finish" }
                 if (!output) Thread.sleep(3)
             }
