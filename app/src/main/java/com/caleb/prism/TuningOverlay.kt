@@ -84,8 +84,8 @@ fun TuningOverlay(
         val controlsWidth = if (sidePanel) Modifier.width((maxWidth * .46f).coerceIn(360.dp, 480.dp)) else Modifier.fillMaxWidth()
         val controlsHeight = if (sidePanel || maxHeight < 480.dp) (maxHeight - 96.dp).coerceAtLeast(120.dp) else maxHeight * .68f
         if (tablet && s.audioEnabled) TimingSidebar(s, status.running, change,
-            Modifier.align(Alignment.TopStart).width(if (timingMinimized) 56.dp else 300.dp)
-                .heightIn(max=maxHeight*.55f).alpha(otherAlpha), timingMinimized, onTimingMinimize)
+            Modifier.align(Alignment.TopStart).padding(top = 96.dp).width(if (timingMinimized) 56.dp else 300.dp)
+                .heightIn(max=(maxHeight-316.dp).coerceAtLeast(120.dp)).alpha(otherAlpha), timingMinimized, onTimingMinimize)
         if (tablet && minimized) {
             SidebarHandle("Settings", false, onMinimize, Modifier.align(Alignment.CenterEnd))
         } else if (hidden) {

@@ -68,6 +68,7 @@ fun PrismApp(
     val status by AudioEngine.status.collectAsStateWithLifecycle()
     val recordingState by recording.state.collectAsStateWithLifecycle()
     val crowdStatus by crowd.status.collectAsStateWithLifecycle()
+    val songState by songAssistant.state.collectAsStateWithLifecycle()
     LaunchedEffect(fullscreen) { onImmersive(fullscreen) }
     LaunchedEffect(crowdInvitation) { if (crowdInvitation.isNotBlank()) { crowdOpen = true; fullscreen = false; tuning = false } }
     BackHandler(fullscreen || tuning || crowdOpen) {
@@ -77,6 +78,7 @@ fun PrismApp(
         BoxWithConstraints(Modifier.fillMaxSize().background(Ink)) {
             val landscape = maxWidth > maxHeight
             val tablet = minOf(maxWidth, maxHeight) >= 600.dp && maxWidth >= 760.dp
+            val showPlayback = !crowdOpen && !crowdStatus.connected
             AndroidView(
                 factory = { createSurface().also { surface = it } },
                 update = { it.update(settings); it.updateCrowd(crowd) },
@@ -94,7 +96,8 @@ fun PrismApp(
             AnimatedVisibility(!fullscreen && !tuning && !crowdOpen, enter = fadeIn(), exit = fadeOut()) {
                 Box(Modifier.fillMaxSize()) {
                     Box(Modifier.fillMaxWidth().height(210.dp).background(Brush.verticalGradient(listOf(Ink.copy(alpha = 0.9f), Color.Transparent))))
-                    Column(Modifier.align(Alignment.TopStart).safeDrawingPadding().padding(horizontal = 24.dp, vertical = 18.dp)) {
+                    Column(Modifier.align(Alignment.TopStart).safeDrawingPadding().padding(horizontal = 24.dp)
+                        .padding(top = if (showPlayback) 112.dp else 18.dp)) {
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                             PrismMark(Modifier.size(30.dp))
                             Spacer(Modifier.width(10.dp))
@@ -199,9 +202,13 @@ fun PrismApp(
             if (tablet && settings.audioEnabled && !fullscreen && !tuning && !crowdOpen && !crowdStatus.connected)
                 TimingSidebar(settings,status.running,onChange,
                     Modifier.align(Alignment.TopStart).safeDrawingPadding()
-                        .padding(start=16.dp,top=76.dp)
-                        .width(if (timingMinimized) 56.dp else 300.dp).heightIn(max=maxHeight*.5f),
+                        .padding(start=16.dp,top=176.dp)
+                        .width(if (timingMinimized) 56.dp else 300.dp)
+                        .heightIn(max=(maxHeight-448.dp).coerceAtLeast(120.dp)),
                     minimized = timingMinimized, onMinimize = { timingMinimized = !timingMinimized })
+            if (showPlayback) PlaybackControls(songState.notificationAccess,
+                Modifier.align(Alignment.TopStart).safeDrawingPadding().padding(top = 12.dp, start = 16.dp)
+                    .width(((maxWidth-40.dp)/2).coerceAtMost(260.dp)))
             if (!crowdStatus.connected && !crowdOpen) SessionRecordControl(recordingState,
                 status.source.takeIf { status.running }, connecting, onRecord, { recording.stop() },
                 Modifier.align(Alignment.TopEnd).safeDrawingPadding().padding(top = 12.dp, end = 16.dp))
@@ -211,7 +218,7 @@ fun PrismApp(
                 .semantics { contentDescription = "Current frame rate ${measuredFps.roundToInt()} FPS" },
                 color = Color.White, fontSize = 14.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Medium)
             if (!recordingState.busy && recordingState.message != null) {
-                Snackbar(Modifier.align(Alignment.TopCenter).safeDrawingPadding().padding(horizontal = 16.dp, vertical = 84.dp),
+                Snackbar(Modifier.align(Alignment.TopCenter).safeDrawingPadding().padding(horizontal = 16.dp, vertical = 116.dp),
                     action = { TextButton(onClick = recording::dismissMessage) { Text("Dismiss") } }) {
                     Text(recordingState.message!!)
                 }

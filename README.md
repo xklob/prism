@@ -4,18 +4,18 @@
 
 A native Android psychedelic visualizer. Kotlin, Jetpack Compose, and seven OpenGL ES 3 patterns. Android 10 or newer.
 
-[Download prism 1.10.0](https://github.com/xklob/prism/releases/tag/v1.10.0) for Kaleidoscope, per-pattern tuning, collapsible tablet sidebars, and persistent session recording controls.
+[Download prism 1.11.0](https://github.com/xklob/prism/releases/tag/v1.11.0) for persistent media playback controls, Kaleidoscope, per-pattern tuning, collapsible tablet sidebars, and session recording.
 
 ## Screenshots
 
-Landscape tablet: Kaleidoscope tuning, with recording and measured FPS at top right.
+Landscape tablet: playback controls at top left, Kaleidoscope tuning on the right, and recording/FPS above it.
 
-![Kaleidoscope on a landscape tablet with its own geometry controls](docs/screenshots/tablet-kaleidoscope.png)
+![Kaleidoscope on a landscape tablet with its own geometry controls](docs/screenshots/tablet-playback-controls.png)
 
 Phone portrait: the compact tuning panel and detailed setting help.
 
 <p>
-  <img src="docs/screenshots/phone-kaleidoscope.png" width="270" alt="Kaleidoscope settings, recording, and FPS on a phone">
+  <img src="docs/screenshots/phone-playback-controls.png" width="270" alt="Kaleidoscope settings, recording, and FPS on a phone">
   <img src="docs/screenshots/phone-setting-help.png" width="270" alt="A detailed setting explanation in a tappable help popup on a phone">
 </p>
 
@@ -23,7 +23,7 @@ Tablet sidebars minimize independently; the song and timing monitor stays at bot
 
 ![Both tablet sidebars minimized into edge handles](docs/screenshots/tablet-minimized.png)
 
-These are unedited Android 16 emulator captures of 1.10 at phone and tablet window sizes. No audio is connected in these views. On-screen FPS reflects the emulator, not physical-device performance.
+These are unedited Android 16 emulator captures at phone and tablet window sizes. The playback-control views show 1.11 with a synthetic media-session fixture; the help and minimized-panel views show 1.10. No audio capture is connected in these views. On-screen FPS reflects the emulator, not physical-device performance.
 
 ## Crowd mode
 
@@ -67,6 +67,14 @@ External capture revocation, microphone privacy muting, and an input that stops 
 Capture requests continuous 48 kHz, 16-bit PCM, with stereo playback capture where supported. Analysis consumes 20 ms blocks and an overlapping 2,048-sample FFT. This is separate from the display frame rate and the recording’s 30 fps target.
 
 Microphone capture prefers Android's unprocessed input when the device supports it, with voice-recognition input as a fallback. This preserves musical transients without enabling speech-oriented gain control or noise suppression. See [Android's recording guidance](https://developer.android.com/media/platform/mediarecorder).
+
+## Playback controls
+
+Previous, play/pause, and next stay at the top left in the normal view, while tuning, and in fullscreen. Tap **Enable playback** and enable **prism playback controls** in Android's Notification access settings. Existing playback-info access also enables the controls.
+
+The controls prefer a playing session in Android’s priority order, then retain a paused or restartable player when nothing is playing. They show its title and disable actions the player does not support. The player decides what Previous means, including whether to restart the current track or skip back. Play rewinds a seekable track that has reached its end before restarting it. No active player leaves the buttons disabled. Closing the player’s session or revoking access clears stale controls.
+
+Transport uses [Android media-session controls](https://developer.android.com/reference/android/media/session/MediaController.TransportControls). It works with Song assist off and without a microphone/system-audio connection. It does not read notification messages, start audio capture, enable online lookup, or bypass playback-capture restrictions. The panel is excluded from recorded video. Crowd views keep their existing controller-driven layout.
 
 ## Session recording
 
@@ -173,6 +181,10 @@ The debug APK is in `app/build/outputs/apk/debug/` and uses package `com.caleb.p
 ```
 
 ## Verification
+
+Version 1.11 passed release build/lint, the 82 Android unit tests, and focused phone/tablet media-session tests. Those checks send real previous, play, pause, and next commands to a separate fixture app, including fullscreen use, missing metadata, unsupported actions, finished-track restart, empty queues, destroyed sessions, and permission revocation. Tablet layout checks and a silent-video recording regression also passed. Playback tests keep Song assist and audio capture off.
+
+The signed APK also paused, resumed, and restarted a finished public audio fixture in a separate Media3 1.11.1 player. This caught a [Media3 package-visibility compatibility issue](https://github.com/androidx/media/issues/3507). On Android 11+, prism connects to the selected player's already-running exported Media3 service so the player can verify prism's notification access. This does not start another player or request additional permissions.
 
 Version 1.10 passed 82 Android unit tests, ten controller tests, eight tests of the extracted native Windows package, and release build/lint. Focused Android 16 emulator checks cover per-pattern settings and help, tablet minimization, FPS/recording placement, Kaleidoscope output, stereo and silent-video recording, and microphone privacy revocation. A separate check with echo actively recording confirmed that prism warns before opening the microphone and that Cancel preserves echo’s capture. Other cross-app capture combinations remain unverified.
 
