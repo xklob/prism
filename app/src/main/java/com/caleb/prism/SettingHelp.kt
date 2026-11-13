@@ -35,6 +35,8 @@ import kotlinx.coroutines.launch
 }
 
 internal fun settingHelp(label: String): String? = when (label) {
+    "Local file" -> "Choose a mono or stereo audio file. prism decodes and analyzes the whole track on this device before Play becomes available. The timing map estimates tempo, beats, bars and phrase changes, using later evidence to fill early acquisition gaps. It can remain uncertain on unusual rhythms or arrangements. No song lookup or screen sharing is used. Reanalyze to apply a different meter or phrase length. Keep prism open while analysis finishes."
+    "Track waveform" -> "Shows the track's amplitude, playhead and estimated beat, bar and phrase markers in a bottom panel. Tap or drag to seek; seeking and file replacement are locked during session recording. It defaults to on for tablets and off for phones, then remembers your choice. This panel is excluded from videos."
     "Spotify compatibility" -> "Uses an optional Shizuku helper to reroute Spotify media into a capturable 48 kHz stereo stream, with playback on your selected audio output. Install and start Shizuku, enable this setting, connect System audio, and allow prism access. The helper stops when capture ends. Restart Shizuku after a reboot. Physical-device compatibility still needs testing; this mode uses hidden Android audio APIs."
     "Recursion depth" -> "Chooses 3–9 repeated levels of Kaleido geometry. More levels add smaller nested shapes and increase drawing work."
     "Mirror segments" -> "Divides Kaleido into 3–20 repeated wedges around its center. More segments create finer radial symmetry."
@@ -86,7 +88,7 @@ internal fun settingHelp(label: String): String? = when (label) {
     "Downbeat flash" -> "Adds a brief, approximately 35 ms white flash on beat 1 of a trusted bar. Zero disables it. It waits for a real bar crossing and stops while timing is uncertain."
     "Color inversion" -> "Inverts the image's RGB colors at the start of a trusted bar, then fades back to the normal palette. Zero disables it; Invert fade sets the return duration."
     "Invert fade" -> "Sets how long an inverted downbeat takes to return to normal colors, from 60 to 400 ms. It affects inversion only, not the white flash or geometry pulse."
-    "Input source" -> "Microphone follows sound around the device. System audio follows compatible apps, including headphone playback, after Android capture consent. Some players restrict capture; prism cannot infer their exact policy from silence."
+    "Input source" -> "Local file analyzes a selected track on this device, then plays it from a precomputed timing map. Microphone follows sound around the device. System audio follows compatible apps, including headphone playback, after Android capture consent. Some players restrict capture; prism cannot infer their exact policy from silence."
     "Input gain" -> "Adjusts analysis sensitivity for quiet or loud input. It can make weak sound easier to follow, but can also emphasize noise. It never changes the original audio saved in a session recording."
     "Sync offset" -> "Moves visual timing relative to captured sound by up to 250 ms. Positive values advance the visual; negative values delay it. Use it to compensate for playback or Bluetooth latency."
     "Global effects" -> "Adds bloom and blur after any local pattern is drawn. The same completed image goes to the screen and recordings; controls remain clear. Switch off to bypass every effect while retaining your settings. Crowd shows retain their controller's output."

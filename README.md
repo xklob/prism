@@ -4,7 +4,7 @@
 
 A native Android psychedelic visualizer. Kotlin, Jetpack Compose, and four OpenGL ES 3 patterns. Android 10 or newer.
 
-[Download prism 1.14.0](https://github.com/xklob/prism/releases/tag/v1.14.0) for optional Spotify compatibility through Shizuku, recording at the live visualizer size and frame cadence where supported, and four visual patterns.
+[Download prism 1.15.0](https://github.com/xklob/prism/releases/tag/v1.15.0) for local-file playback with full-track timing analysis and an optional waveform. It also includes optional Spotify compatibility through Shizuku, native-size recording where supported, and four visual patterns.
 
 ## Screenshots
 
@@ -55,7 +55,7 @@ The four patterns work independently of audio. **React to audio** is remembered 
 
 1. [Download the APK from GitHub Releases](https://github.com/xklob/prism/releases/latest) and install it on an Android device.
 2. Select a pattern. Swipe the cards or use the arrow buttons to browse; the current selection stays visible. The title, audio switch, and actions share a dark translucent panel. Short phone landscape windows use compact cards and a **⋮** menu for **App settings** and **Join crowd show**.
-3. To follow music, enable **React to audio**, choose **Microphone** or **System audio**, then **Connect audio**. Leave the switch off for ambient animation.
+3. To follow music, enable **React to audio**, choose **Microphone** or **System audio**, then **Connect audio**. Choose **Local file** to analyze and play a track on the device. Leave the switch off for ambient animation.
 4. Open **Tune** for controls in a semi-transparent panel over the full-size visual. Landscape and tablet windows use a wider right-side panel; smaller windows use a bottom panel. The heading, tabs, and actions stay together while the settings scroll. The uncovered visual stays unchanged. While dragging a slider, other controls fade away. On tablets, **Minimize** collapses settings into an edge handle; the timing sidebar collapses independently. Expand to restore the selected page and scroll position. On phones, **Hide** removes the controls until **Show controls** is tapped. **Done** returns to the scene browser. **App settings** contains shared input, song, and display preferences.
 5. Tap **Immerse** for fullscreen. Tap the visual or use Back to restore the controls. Drag the visual to shift its center.
 6. Tap **Record session** at the top right. It records the connected audio source shown on the button, or a **Silent video** if none is connected. Tap **Stop** to save. The control stays visible in fullscreen and while tuning.
@@ -88,6 +88,27 @@ Disconnecting capture, leaving the app's task, revoking capture access, or losin
 
 This targets the system-only capture restriction reported for Spotify. Players that prohibit all system capture can still remain silent. The mode uses hidden Android audio-routing APIs and may vary by Android version, device, or Spotify renderer. The integrated Shizuku path is tested with explicitly labelled synthetic media fixtures on an Android emulator. Capture from Spotify's actual native renderer, Bluetooth routing, physical playback quality, and timing on Pixel Tablet still need device confirmation. See the [reported Spotify renderer regression](https://community.spotify.com/forum/en/discussion/7559908/possible-regression-android-playback-capture-blocked-by-spotifys-native-oboe-renderer) for background; it is a community investigation, not a Spotify confirmation.
 
+## Local audio files
+
+Choose **Local file** under **React to audio** or **App settings → Audio**, then **CHOOSE FILE**. Android's file picker grants access to that track. prism decodes the complete file and analyzes tempo, beat phase, meter, bar alignment, and phrase hypotheses on the device. Playback stays unavailable until analysis finishes. Press **Play** in the top-left player when ready.
+
+The timing map uses later confident observations to fill acquisition gaps and bridge quieter sections. A track summary shows its dominant estimated tempo; playback can follow local tempo changes. Beat, bar, and phrase confidence stays visible in the tablet monitor. Uncertain audio can have no confident grid, and phrase boundaries remain unresolved when the music provides insufficient evidence. File start is not assumed to be a phrase boundary.
+
+The top-left player provides restart, play/pause, and a ten-second forward seek. **Track waveform** opens a separate bottom panel with amplitude, playhead, and estimated beat/bar/phrase markers. It defaults to on for tablets and off for phones, then remembers your choice. Tap or drag the waveform to seek, or use its accessibility seek action. **HIDE** closes it; enable it again in local-file settings. The waveform reserves space below settings and the tablet monitor and stays available in fullscreen. It is excluded from recordings.
+
+Local-file settings have their own **Auto / 3 / 4** meter and **8 / 16 / 32** bar phrase choices. **ANALYZE AGAIN** applies changed analysis settings or reloads the last selected track. Analysis has progress and cancel controls. Keep prism open while it finishes. Existing manual tap controls apply to live inputs; the local player uses its precomputed map.
+
+Local playback uses Android audio focus, pauses when another app takes focus or headphones disconnect, and provides an ongoing media notification with play/pause and stop. It continues when you switch apps. Removing prism from recents stops it. Pausing visuals or disabling their audio response can leave the track playing. Session recording includes the active file soundtrack; file changes, seeking, and restarting are locked while recording. Leaving the visualizer still finishes the video.
+
+Mono and stereo files supported by Android's decoders are accepted, including tested WAV and AAC/M4A. Tracks are limited to one hour and available private cache space. Audio is decoded to temporary 48 kHz, 16-bit PCM with band-limited sample-rate conversion when needed. The source file is unchanged. Replacing a track removes its decoded cache; an app restart clears orphaned cache and requires analysis again. The last file grant, analysis options, and waveform preference persist. No microphone, device-capture consent, notification-listener access, Shizuku, or online song lookup is needed for this mode.
+
+<p>
+  <img src="docs/screenshots/tablet-local-audio.png" width="720" alt="Local synthetic audio playback with timing monitor and bottom waveform on a landscape tablet">
+  <img src="docs/screenshots/phone-local-audio.png" width="240" alt="Local synthetic audio playback and optional waveform on a phone">
+</p>
+
+These are unedited 1.15.0 Android 16 emulator captures playing an original synthetic musical fixture. They demonstrate application behavior, not real-song detection accuracy or physical-device timing/performance.
+
 ## Playback controls
 
 Previous, play/pause, and next stay at the top left in the normal view, while tuning, and in fullscreen. Tap **Enable playback** and enable **prism playback controls** in Android's Notification access settings. Existing playback-info access also enables the controls.
@@ -100,7 +121,7 @@ Transport uses [Android media-session controls](https://developer.android.com/re
 
 Recordings save the full visualizer image to **Movies/Prism** as H.264 MP4 files, with AAC sound from the active input when connected. Controls, notifications, and tuning overlays stay out of the video. **Last video** opens the latest recording; **Share** opens Android's share sheet. Videos also appear in Photos or Files. No storage permission is needed on supported Android versions.
 
-Recording works with ambient or audio-reactive patterns. The top-right control uses the currently connected microphone or system input without switching sources or asking for capture consent again. With no connected input it records video only, without opening an audio device. To include sound, connect audio before starting. Change patterns, drag the image, adjust tuning, or pause the animation while recording. The input present at the start stays connected until recording stops, even when **React to audio** is off. Input changes are disabled during recording; stop and start a new session to change its soundtrack. Leaving prism, locking the phone, or losing audio capture finishes the current recording. Start a new recording when you return. Normal audio-reactivity capture behavior resumes afterward.
+Recording works with ambient or audio-reactive patterns. The top-right control uses the currently connected microphone/system input or playing local file without switching sources or asking for capture consent again. With no connected input it records video only, without opening an audio device. To include sound, connect audio before starting. Change patterns, drag the image, adjust tuning, or pause the animation while recording. The input present at the start stays connected until recording stops, even when **React to audio** is off. Input changes are disabled during recording; stop and start a new session to change its soundtrack. Leaving prism, locking the phone, or losing audio capture finishes the current recording. Start a new recording when you return. Normal audio-reactivity capture behavior resumes afterward.
 
 Video first requests the full visualizer canvas size and the maximum live-rendering rate supported by prism (currently up to 60 fps), bounded by the display refresh rate. It preserves the screen's aspect ratio within the encoder's alignment requirements. If the encoder cannot configure that size/rate, prism tries a lower frame-rate target and then smaller sizes. The recording button shows the actual configured dimensions and frame-rate target. Every live rendered frame is eligible for recording up to that target; prism does not generate extra frames to fill gaps. Orientation locks for the recording. Actual frame rate depends on rendering and encoding capacity. Microphone audio is mono; system audio is stereo where supported. The recorder receives the original 48 kHz PCM before analysis gain, using the same capture clock as the visuals. A common timeline preserves initial silence and capture gaps rather than shifting audio against the video. Pending files are made visible only after all recorded tracks finish successfully; failed exports are removed.
 
@@ -214,7 +235,7 @@ Catalog BPM helps resolve competing tempo candidates and increases beat confiden
 
 Phrase tracking is local and works without song assistance. Choose an **8**, **16**, or **32 bar** hypothesis. Sustained changes in whole-bar energy and bass/mid/treble balance suggest an origin; repeated changes at the selected interval increase evidence. Until a change is observed, prism says it is listening for a phrase change. These are explicitly labeled **estimated**, not known song structure. Because a whole bar must be observed, automatic alignment can arrive one bar late. A section is not necessarily one phrase, and unusual arrangements can defeat this heuristic.
 
-Tap **Phrase starts here** on a known boundary to align both the first downbeat and the phrase counter manually. **Auto phrase** retains the manually aligned phrase origin with high initial confidence and resumes structural inference from it. **Auto timing** also preserves a manual phrase anchor during the handoff. The display labels this initial guidance explicitly; later audio changes may refine it. Phrase length changes, unstable timing, and discontinuities clear the old origin. The numbered counter and confidence are visible in the audio monitor and Song panel. Phrase estimates do not trigger extra strobes or override existing beat/bar effects. Precomputed full-song structure analysis is not included.
+Tap **Phrase starts here** on a known boundary to align both the first downbeat and the phrase counter manually. **Auto phrase** retains the manually aligned phrase origin with high initial confidence and resumes structural inference from it. **Auto timing** also preserves a manual phrase anchor during the handoff. The display labels this initial guidance explicitly; later audio changes may refine it. Phrase length changes, unstable timing, and discontinuities clear the old origin. The numbered counter and confidence are visible in the audio monitor and Song panel. Phrase estimates do not trigger extra strobes or override existing beat/bar effects. Local-file mode runs its complete timing analysis before playback; microphone and system capture use live estimates.
 
 Beat/downbeat inference uses [BeatNet](https://github.com/mjhydri/BeatNet) models 1 and 3 by Mojtaba Heydari and contributors, licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), converted to ONNX with explicit recurrent state. prism supplies its own Kotlin frontend and musical tracker. [ONNX Runtime](https://github.com/microsoft/onnxruntime) is MIT-licensed. Attribution, licenses, and model provenance ship in `app/src/main/assets/rhythm/`; reproducible conversion instructions are in [tools/beatnet](tools/beatnet/README.md).
 
@@ -233,6 +254,8 @@ The debug APK is in `app/build/outputs/apk/debug/` and uses package `com.caleb.p
 ```
 
 ## Verification
+
+Version 1.15.0 passed 100 JVM tests and release build/lint. Local-file device checks cover Android file selection, complete analysis before playback, the expected 128 BPM musical fixture, 44.1 kHz conversion, mono AAC and stereo WAV, uncertain sustained tones, cancellation, invalid files, waveform seeking, playback pause/resume and end, background playback, and stereo soundtrack recording without microphone access. Phone/tablet layout and signed-build checks are documented in [the release notes](docs/releases/1.15.0.md). Physical playback latency and real-song phrase accuracy remain unverified.
 
 Version 1.14.0 passed 95 JVM tests, release build/lint, native phone/tablet layout and help checks, saved-look migration, GPU transitions, silent recording, and signed-release smoke checks. The integrated Shizuku helper was exercised with a separately labelled synthetic media app at 44.1/48 kHz, source restarts, capture-policy changes, volume comparison, stereo recording, canceled consent, and helper loss. Recording retained the full 1280 × 800 emulator canvas and followed its rendered cadence. The Windows controller passed ten tests and packaged native-Windows startup, authentication, QR, command, and shutdown checks. See [release details and limits](docs/releases/1.14.0.md). Actual native Spotify capture on Pixel Tablet remains unverified.
 
@@ -303,4 +326,6 @@ These are proposals, not current features:
 - **Live performance controls:** a small set of assignable macros, MIDI/OSC input, and touch gestures for the current pattern.
 - **A deeper Mandelbrot explorer:** selectable destinations, pan/zoom navigation, and a precision strategy for dives beyond the current mobile-safe range.
 - **Recording quality controls:** frame rate, resolution, bitrate, free-space estimates, and a session gallery with thumbnails.
+- **Track tools:** editable beat/bar/phrase grids, waveform zoom, A/B loops, and a local playlist or saved analysis cache.
+- **Detection work:** validate against annotated real tracks and measure output latency on the Pixel Tablet; improve full-track phrase inference.
 - **Performance polish:** measure physical Pixel Tablet GPU/thermal behavior and refine the adaptive-quality thresholds for sustained sessions.

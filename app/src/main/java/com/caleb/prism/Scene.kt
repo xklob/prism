@@ -22,7 +22,7 @@ enum class Scene(val id: Int, val title: String, val subtitle: String, val accen
 
 }
 
-enum class AudioSource(val label: String) { MICROPHONE("Microphone"), SYSTEM("System audio") }
+enum class AudioSource(val label: String) { MICROPHONE("Microphone"), SYSTEM("System audio"), LOCAL("Local file") }
 enum class Palette(val title: String, val colors: List<Color>) {
     SPECTRUM("Spectrum", listOf(Color(0xFF8364FF), Color(0xFFFF65C6), Color(0xFF5DF0E5))),
     EMBER("Ember", listOf(Color(0xFF7A28AD), Color(0xFFFF517D), Color(0xFFFFC15E))),

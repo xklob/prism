@@ -18,8 +18,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.delay
 
 /** Compose-only status stays visible in fullscreen and never enters the video renderer. */
-@Composable fun TabletMonitor(assistant: SongAssistant, modifier: Modifier = Modifier) {
+@Composable fun TabletMonitor(assistant: SongAssistant, modifier: Modifier = Modifier, local: Boolean = false) {
     val capture by AudioEngine.status.collectAsStateWithLifecycle()
+    val file by LocalAudio.state.collectAsStateWithLifecycle()
     var rhythm by remember { mutableStateOf(RhythmState()) }
     var phrase by remember { mutableStateOf(PhraseState()) }
     var energy by remember { mutableFloatStateOf(0f) }
@@ -36,7 +37,10 @@ import kotlinx.coroutines.delay
         .border(1.dp, Color.White.copy(alpha = .14f), shape)
         .semantics { contentDescription = "Tablet song and timing monitor" }
         .padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        SongMonitor(assistant)
+        if (local) {
+            Text(file.title, color = Color.White, fontSize = 12.sp)
+            Text("Local file // analyzed timing", color = Color(0xFFCBC9D4), fontSize = 10.sp)
+        } else SongMonitor(assistant)
         HorizontalDivider(color = Color.White.copy(alpha = .12f))
         RhythmMonitor(capture.running, rhythm, now, energy, details = false, showPhrase = false)
         if (!capture.running) capture.message?.let { Text(it, color = Color(0xFFCBC9D4), fontSize = 11.sp) }
