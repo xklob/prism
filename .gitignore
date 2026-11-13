@@ -7,6 +7,7 @@ local.properties
 signing.properties
 dist/
 review/
+.codex-attachments/
 .idea/
 __pycache__/
 *.pyc
