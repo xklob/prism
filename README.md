@@ -4,18 +4,18 @@
 
 A native Android psychedelic visualizer. Kotlin, Jetpack Compose, and seven OpenGL ES 3 patterns. Android 10 or newer.
 
-[Download prism 1.13.0](https://github.com/xklob/prism/releases/tag/v1.13.0) for named looks, phrase cues, timing diagnostics, global effects, and session recording.
+[Download prism 1.13.1](https://github.com/xklob/prism/releases/tag/v1.13.1) for clearer phone/tablet controls, named looks, phrase cues, global effects, and session recording.
 
 ## Screenshots
 
-Landscape tablet: playback controls at top left, Kaleidoscope tuning on the right, and recording/FPS above it.
+Landscape tablet: the selected pattern and its controls share a dark translucent panel. Playback stays at top left; recording and FPS have separate space at top right.
 
-![Kaleidoscope on a landscape tablet with its own geometry controls](docs/screenshots/tablet-playback-controls.png)
+![Kaleidoscope with a readable control panel on a landscape tablet](docs/screenshots/tablet-home-panel.png)
 
-Phone portrait: the compact tuning panel and detailed setting help.
+Phone portrait: the title and controls stay readable over bright visuals. The selected pattern scrolls into view automatically; detailed setting help remains available from ⓘ.
 
 <p>
-  <img src="docs/screenshots/phone-playback-controls.png" width="270" alt="Kaleidoscope settings, recording, and FPS on a phone">
+  <img src="docs/screenshots/phone-home-panel.png" width="270" alt="Kaleidoscope selected in the phone control panel, with separate recording and FPS controls">
   <img src="docs/screenshots/phone-setting-help.png" width="270" alt="A detailed setting explanation in a tappable help popup on a phone">
 </p>
 
@@ -23,7 +23,7 @@ Tablet sidebars minimize independently; the song and timing monitor stays at bot
 
 ![Both tablet sidebars minimized into edge handles](docs/screenshots/tablet-minimized.png)
 
-These are unedited Android 16 emulator captures at phone and tablet window sizes. The playback-control views show 1.11 with a synthetic media-session fixture; the help and minimized-panel views show 1.10. No audio capture is connected in these views. On-screen FPS reflects the emulator, not physical-device performance.
+These are unedited Android 16 emulator captures at phone and tablet window sizes. The home panels show 1.13.1; the help and minimized-panel views show 1.10. No audio capture is connected in these views. On-screen FPS reflects the emulator, not physical-device performance.
 
 Global bloom and blur controls, shared across all seven patterns:
 
@@ -57,13 +57,13 @@ The six geometric patterns work independently of audio. Equalizer displays the c
 ## Use
 
 1. [Download the APK from GitHub Releases](https://github.com/xklob/prism/releases/latest) and install it on an Android device.
-2. Select a pattern.
+2. Select a pattern. Swipe the cards or use the arrow buttons to browse; the current selection stays visible. The title, audio switch, and actions share a dark translucent panel. Short phone landscape windows use compact cards and a **⋮** menu for **App settings** and **Join crowd show**.
 3. To follow music, enable **React to audio**, choose **Microphone** or **System audio**, then **Connect audio**. Leave the switch off for ambient animation.
 4. Open **Tune** for controls in a semi-transparent panel over the full-size visual. Landscape and tablet windows use a wider right-side panel; smaller windows use a bottom panel. The heading, tabs, and actions stay together while the settings scroll. The uncovered visual stays unchanged. While dragging a slider, other controls fade away. On tablets, **Minimize** collapses settings into an edge handle; the timing sidebar collapses independently. Expand to restore the selected page and scroll position. On phones, **Hide** removes the controls until **Show controls** is tapped. **Done** returns to the scene browser. **App settings** contains shared input, song, and display preferences.
 5. Tap **Immerse** for fullscreen. Tap the visual or use Back to restore the controls. Drag the visual to shift its center.
 6. Tap **Record session** at the top right. It records the connected audio source shown on the button, or a **Silent video** if none is connected. Tap **Stop** to save. The control stays visible in fullscreen and while tuning.
 
-Measured **FPS** stays visible below the recording control at the top right, including fullscreen. The badge is excluded from recorded video. The launcher uses a scalable RGB mandala, with a monochrome version for Android themed icons and notifications.
+Measured **FPS** stays visible below the recording control at the top right, including fullscreen. In short phone landscape windows it sits beside the recording control. Panels reserve the controls' measured height so larger text does not make them overlap. The badge is excluded from recorded video. The launcher uses a scalable RGB mandala, with a monochrome version for Android themed icons and notifications.
 
 System audio follows media/game playback from compatible apps, including playback through headphones. Grant Android's audio permission and device capture consent, then play music. The projection permission captures audio; prism renders its own video frames directly and never records other apps' screens. Some apps prohibit playback capture. Switch to the microphone if their audio remains silent. Phone calls are not captured. Android documents these limitations at <https://developer.android.com/media/platform/av-capture>.
 
@@ -225,6 +225,8 @@ The debug APK is in `app/build/outputs/apk/debug/` and uses package `com.caleb.p
 ```
 
 ## Verification
+
+Version 1.13.1 passed release build/lint and all 98 unit tests. Native UI checks cover phone portrait, 35% larger text, short phone landscape, tablet layout and rotation, selected-pattern accessibility, audio-control reachability, and separation of playback, recording, FPS, and settings panels. Playback controls and stereo system-audio recording also passed emulator smoke checks. The signed APK upgraded 1.13.0 and passed a saved-look/diagnostics smoke test. These are emulator results; the physical Pixel Tablet layout still needs field confirmation.
 
 Version 1.13 passed release build/lint and 98 Android unit tests. Phrase-cue tests cover future boundaries, manual alignment, sync offset, missing confidence, held tempo, stale input, discontinuities, and explicit corrections. Diagnostics tests cover bounded history, signed phase offsets, and locale-independent relative-time CSV output. Phone and landscape tablet tests exercise saving, favoriting, renaming, deleting, recalling, queuing, persistence, and CSV export through Android's file picker with readback. GPU checks verify crossfade endpoints, intermediate pixels, interrupted-fade continuity, all-pattern effect bypass, and resized targets. Silent recording through an interrupted preset transition and stereo system-audio recording both passed. The signed APK upgraded 1.12 and passed a separate library/queue/diagnostics smoke test after release shrinking. Physical Pixel Tablet behavior remains unverified.
 

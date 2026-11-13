@@ -35,6 +35,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
@@ -53,7 +54,8 @@ fun TuningOverlay(
     appSettings: Boolean = false, switchScope: () -> Unit = {},
     minimized: Boolean = false, onMinimize: () -> Unit = {},
     timingMinimized: Boolean = false, onTimingMinimize: () -> Unit = {},
-    performance: () -> RenderQualityReport = { RenderQualityReport() }, looks: LookLibrary
+    performance: () -> RenderQualityReport = { RenderQualityReport() }, looks: LookLibrary,
+    topControlsHeight: Dp = 100.dp
 ) {
     val tabs = if (appSettings) listOf("Audio", "Song", "Effects", "Display", "Diagnostics") else listOf(s.scene.shapeTab, "Color", s.scene.motionTab, "Beat", "Looks")
     var tab by rememberSaveable(appSettings) { mutableStateOf(initialTab.takeIf { it in tabs } ?: tabs.first()) }
@@ -84,11 +86,13 @@ fun TuningOverlay(
     }
     BoxWithConstraints(Modifier.fillMaxSize().safeDrawingPadding().imePadding().padding(16.dp)) {
         val sidePanel = maxWidth >= 600.dp
+        val compactHeight = maxHeight < 480.dp
         val controlsWidth = if (sidePanel) Modifier.width((maxWidth * .46f).coerceIn(360.dp, 480.dp)) else Modifier.fillMaxWidth()
-        val controlsHeight = if (sidePanel || maxHeight < 480.dp) (maxHeight - 96.dp).coerceAtLeast(120.dp) else maxHeight * .68f
+        val availableHeight = (maxHeight - topControlsHeight - 12.dp).coerceAtLeast(120.dp)
+        val controlsHeight = if (sidePanel || maxHeight < 480.dp) availableHeight else minOf(availableHeight, maxHeight * .68f)
         if (tablet && s.audioEnabled) TimingSidebar(s, status.running, change,
-            Modifier.align(Alignment.TopStart).padding(top = 96.dp).width(if (timingMinimized) 56.dp else 300.dp)
-                .heightIn(max=(maxHeight-316.dp).coerceAtLeast(120.dp)).alpha(otherAlpha), timingMinimized, onTimingMinimize)
+            Modifier.align(Alignment.TopStart).padding(top = topControlsHeight + 12.dp).width(if (timingMinimized) 56.dp else 300.dp)
+                .heightIn(max=(maxHeight-topControlsHeight-232.dp).coerceAtLeast(120.dp)).alpha(otherAlpha), timingMinimized, onTimingMinimize)
         if (tablet && minimized) {
             SidebarHandle("Settings", false, onMinimize, Modifier.align(Alignment.CenterEnd))
         } else if (hidden) {
@@ -100,7 +104,7 @@ fun TuningOverlay(
             Column(Modifier.align(if (sidePanel) Alignment.BottomEnd else Alignment.BottomCenter)
                 .then(controlsWidth).heightIn(max = controlsHeight)
                 .clip(RoundedCornerShape(24.dp))
-                .background(OverlayInk.copy(alpha = .82f))
+                .background(OverlayInk.copy(alpha = .92f))
                 .border(1.dp, Color.White.copy(alpha = .16f), RoundedCornerShape(24.dp))
                 .semantics { contentDescription = "Tuning panel" }
                 .padding(horizontal = 16.dp, vertical = 8.dp)) {
@@ -211,15 +215,29 @@ fun TuningOverlay(
                         }
                     }
                 }
-                if (!appSettings) Row(Modifier.fillMaxWidth().alpha(otherAlpha), horizontalArrangement = Arrangement.SpaceBetween) {
+                if (!appSettings && !compactHeight) Row(Modifier.fillMaxWidth().alpha(otherAlpha), horizontalArrangement = Arrangement.SpaceBetween) {
                     SettingHelp("Saved looks")
                     TextButton(onClick = { change(s.randomLook()); notice = "New variation" }) { Text("Shuffle", style = ReadableText, fontSize = 11.sp) }
                     TextButton(onClick = { store.saveLook(s); saved = true; notice = "Look saved for ${s.scene.title}" }) { Text("Save", style = ReadableText, fontSize = 11.sp) }
                     TextButton(onClick = { change(store.loadLook(s.scene, s.source).copy(paused = s.paused)); notice = "Saved look restored" }, enabled = saved) { Text("Recall", style = ReadableText, fontSize = 11.sp, color = if (saved) Color.White else Color.LightGray.copy(alpha = 0.6f)) }
                     TextButton(onClick = { change(s.resetLook()); notice = "Scene defaults restored" }) { Text("Reset", style = ReadableText, fontSize = 11.sp) }
                 }
-                TextButton(onClick = switchScope, modifier = Modifier.align(Alignment.End).alpha(otherAlpha)) {
-                    Text(if (appSettings) "${s.scene.title} settings" else "App settings", style = ReadableText, color = OverlayAccent, fontSize = 11.sp)
+                Row(Modifier.fillMaxWidth().alpha(otherAlpha), horizontalArrangement = Arrangement.End) {
+                    if (!appSettings && compactHeight) {
+                        var actions by remember { mutableStateOf(false) }
+                        Box {
+                            TextButton(onClick = { actions = true }) { Text("Look actions", style = ReadableText, fontSize = 11.sp) }
+                            DropdownMenu(actions, { actions = false }) {
+                                DropdownMenuItem({ Text("Shuffle") }, { actions = false; change(s.randomLook()) })
+                                DropdownMenuItem({ Text("Save") }, { actions = false; store.saveLook(s); saved = true })
+                                DropdownMenuItem({ Text("Recall") }, { actions = false; change(store.loadLook(s.scene, s.source).copy(paused = s.paused)) }, enabled = saved)
+                                DropdownMenuItem({ Text("Reset") }, { actions = false; change(s.resetLook()) })
+                            }
+                        }
+                    }
+                    TextButton(onClick = switchScope) {
+                        Text(if (appSettings) "${s.scene.title} settings" else "App settings", style = ReadableText, color = OverlayAccent, fontSize = 11.sp)
+                    }
                 }
             }
         }
