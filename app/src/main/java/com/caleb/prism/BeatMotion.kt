@@ -16,6 +16,15 @@ class BeatMotion {
     private var effectAt=Double.NEGATIVE_INFINITY
     private var lastFlashAt=Double.NEGATIVE_INFINITY
     private fun clearEffects() { previousPosition=Double.NaN; effectAt=Double.NEGATIVE_INFINITY }
+    private fun pulse(phase: Double, cycle: Double, length: Double, bpm: Float): Double {
+        // Use the known grid to ease into an accent over the last 45 ms, landing exactly
+        // on the beat. Both sides of the peak have zero slope; no one-frame scale reset.
+        val attack=(bpm/60.0*.045).coerceIn(.025,.18)
+        val rise=((phase-cycle+attack)/attack).coerceIn(0.0,1.0)
+        val eased=rise*rise*(3-2*rise)
+        val release=exp(-(phase/(length*.8)).pow(2))
+        return release*(1-eased)+eased
+    }
     fun update(timing: RhythmState, levels: AudioLevels, now: Double, settings: VisualSettings): MusicalMotion {
         if (!settings.audioEnabled || settings.audioAmount <= 0f) {
             clearEffects(); motion=MusicalMotion(); return motion
@@ -26,11 +35,15 @@ class BeatMotion {
         }
         val position=timing.positionAt(now+settings.syncOffsetMs/1000.0)+1e-7
         val phase=position-floor(position)
-        val beat=if (timing.locked) exp(-phase/settings.pulseLength)*timing.confidence
-            else exp(-max(0.0,now-timing.lastBeatTime)/0.13)*0.65
+        val beat=if (timing.locked) pulse(phase,1.0,settings.pulseLength.toDouble(),timing.bpm)*timing.confidence
+            else {
+                val age=max(0.0,now-timing.lastBeatTime)
+                val rise=(age/.025).coerceIn(0.0,1.0)
+                rise*rise*(3-2*rise)*exp(-(max(0.0,age-.025)/.13).pow(2))*.65
+            }
         val barPosition=position-timing.barOffset
         val barPhase=barPosition-floor(barPosition/timing.beatsPerBar)*timing.beatsPerBar
-        val bar=if (timing.barLocked) exp(-barPhase/(settings.pulseLength*2.5))*timing.barConfidence else 0.0
+        val bar=if (timing.barLocked) pulse(barPhase,timing.beatsPerBar.toDouble(),settings.pulseLength*2.5,timing.bpm)*timing.barConfidence else 0.0
         val flow=if (timing.locked) (0.5-0.5*cos(2*PI*(if (timing.barLocked) barPhase/timing.beatsPerBar else phase)))*timing.confidence else 0.0
         val trusted=timing.locked && timing.barLocked && !timing.coasting && timing.conflict == RhythmConflict.NONE
         if (trusted) {

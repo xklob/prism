@@ -24,14 +24,26 @@ class ReleaseRhythmSmokeTest {
         val instrumentation=InstrumentationRegistry.getInstrumentation()
         val context=instrumentation.targetContext
         val device=UiDevice.getInstance(instrumentation)
+        // The persistent monitor updates continuously; accessibility need not wait for
+        // the entire screen to become idle before operating a stable control.
+        Configurator.getInstance().waitForIdleTimeout=300
         val evidence=File(context.getExternalFilesDir(null),"review").apply { mkdirs() }
         val app="com.caleb.prism"
+        fun controls(): UiObject2? = device.findObject(By.desc("Tuning panel"))?.findObject(By.scrollable(true))
+            ?: device.findObjects(By.scrollable(true)).filter { it.visibleBounds.height()>150 }
+                .maxByOrNull { it.visibleBounds.centerX() }
         fun click(text: String) {
             instrumentation.uiAutomation.clearCache()
             var target=device.findObject(By.text(text))
+            if (target == null || target.visibleBounds.height()<20) {
+                controls()?.fling(Direction.UP)
+                SystemClock.sleep(200)
+                instrumentation.uiAutomation.clearCache()
+                target=device.findObject(By.text(text))
+            }
             for (attempt in 0 until 7) {
                 if (target != null && target.visibleBounds.height() >= 20) break
-                device.findObject(By.scrollable(true))?.scroll(Direction.DOWN,.45f)
+                controls()?.scroll(Direction.DOWN,.45f)
                 SystemClock.sleep(200)
                 instrumentation.uiAutomation.clearCache()
                 target=device.findObject(By.text(text))
@@ -53,7 +65,7 @@ class ReleaseRhythmSmokeTest {
             return requireNotNull(control).isChecked
         }
         fun waitText(pattern: String): UiObject2 {
-            device.findObject(By.scrollable(true))?.fling(Direction.UP)
+            controls()?.fling(Direction.UP)
             SystemClock.sleep(300)
             val end=SystemClock.elapsedRealtime()+30000
             while (SystemClock.elapsedRealtime()<end) {
@@ -127,7 +139,7 @@ class ReleaseRhythmSmokeTest {
                 instrumentation.uiAutomation.clearCache()
                 if (device.hasObject(By.text("Last video"))) break
                 // Song/phrase status can make the main controls taller than one screen.
-                device.findObject(By.scrollable(true))?.scroll(Direction.DOWN,.35f)
+                controls()?.scroll(Direction.DOWN,.35f)
                 SystemClock.sleep(200)
             }
             assertTrue("Signed release exposes its saved recording",device.hasObject(By.text("Last video")))
@@ -143,8 +155,10 @@ class ReleaseRhythmSmokeTest {
             click("Audio")
             track.pause()
             waitText("Waiting for sound.*")
-            click("Stop")
+            // Stop from the main audio panel after leaving the scrollable tuning pane.
+            // On tablets the persistent monitor can satisfy waitText while that pane is scrolled.
             click("Done")
+            click("Stop")
             device.executeShellCommand("am force-stop $app")
             launch()
             assertTrue("Audio preference survives release restart",audioEnabled())

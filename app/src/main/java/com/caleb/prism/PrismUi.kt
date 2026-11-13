@@ -70,6 +70,7 @@ fun PrismApp(
     MaterialTheme(colorScheme = darkColorScheme(primary = Lilac, secondary = Mint, background = Ink, surface = Panel, onSurface = Color.White)) {
         BoxWithConstraints(Modifier.fillMaxSize().background(Ink)) {
             val landscape = maxWidth > maxHeight
+            val tablet = minOf(maxWidth, maxHeight) >= 600.dp && maxWidth >= 760.dp
             AndroidView(
                 factory = { createSurface().also { surface = it } },
                 update = { it.update(settings); it.updateCrowd(crowd) },
@@ -102,7 +103,7 @@ fun PrismApp(
                             Text(settings.scene.subtitle, color = Color(0xFFCDD0E0), fontSize = 13.sp)
                         }
                     }
-                    val panelModifier = if (landscape) Modifier.align(Alignment.CenterEnd).width(340.dp).fillMaxHeight().safeDrawingPadding().padding(top = 65.dp)
+                    val panelModifier = if (landscape || tablet) Modifier.align(Alignment.CenterEnd).width(if (tablet) 420.dp else 340.dp).fillMaxHeight().safeDrawingPadding().padding(top = 65.dp)
                         else Modifier.align(Alignment.BottomCenter).fillMaxWidth()
                     Column(panelModifier.background(Brush.verticalGradient(listOf(Color.Transparent, Ink.copy(alpha = 0.95f), Ink)))) {
                         Spacer(Modifier.height(if (landscape) 8.dp else 42.dp))
@@ -169,8 +170,15 @@ fun PrismApp(
             if (tuning) TuningOverlay(
                 settings, status, connecting, onChange, onConnect, onDisconnect,
                 fps = { surface?.engine?.measuredFps ?: 0f }, dismiss = { tuning = false }, captureLocked = recordingState.busy,
-                songAssistant = songAssistant, initialTab = tuningTab
+                songAssistant = songAssistant, initialTab = tuningTab, tablet = tablet
             )
+            if (tablet && settings.tabletMonitor && !crowdOpen) TabletMonitor(songAssistant,
+                Modifier.align(Alignment.BottomStart).safeDrawingPadding().padding(16.dp).width(300.dp))
+            if (tablet && settings.audioEnabled && !fullscreen && !tuning && !crowdOpen && !crowdStatus.connected)
+                TimingSidebar(settings,status.running,onChange,
+                    Modifier.align(Alignment.TopStart).safeDrawingPadding()
+                        .padding(start=16.dp,top=if (recordingState.busy) 130.dp else 76.dp)
+                        .width(300.dp).heightIn(max=maxHeight*.5f-if (recordingState.busy) 54.dp else 0.dp))
             if (recordingState.busy) RecordingBadge(recordingState, { recording.stop() },
                 Modifier.align(Alignment.TopStart).safeDrawingPadding().padding(start = 20.dp, top = if (fullscreen) 8.dp else 70.dp))
             if (!recordingState.busy && recordingState.message != null) {
@@ -222,6 +230,22 @@ fun PrismApp(
                 drawPath(path, c.copy(alpha = 0.3f + line / 10f), style = Stroke(1.4.dp.toPx()))
             }
             Scene.WORMHOLE -> for (i in 1..6) drawCircle(c.copy(alpha = i / 7f), radius * i / 6f, center + Offset((6-i) * 1.8f, 0f), style = Stroke(1.2.dp.toPx()))
+            Scene.EQUALIZER -> for (i in 0..7) {
+                val bar = size.height * (0.25f + 0.65f * abs(sin(i * 1.2f + .5f)))
+                drawRoundRect(c.copy(alpha = .8f), Offset(size.width * i / 8, size.height-bar),
+                    Size(size.width / 11, bar), androidx.compose.ui.geometry.CornerRadius(2.dp.toPx()))
+            }
+            Scene.MANDELBROT -> {
+                val path=Path()
+                for (i in 0..120) {
+                    val a=i*2*PI/120
+                    val x=center.x+(cos(a)*.5-cos(2*a)*.25).toFloat()*radius*1.7f
+                    val y=center.y+(sin(a)*.5-sin(2*a)*.25).toFloat()*radius*1.7f
+                    if (i==0) path.moveTo(x,y) else path.lineTo(x,y)
+                }
+                path.close(); drawPath(path,c,style=Stroke(1.5.dp.toPx()))
+                drawCircle(c.copy(alpha=.7f),radius*.33f,center-Offset(radius,0f),style=Stroke(1.2.dp.toPx()))
+            }
             else -> for (ring in 1..3) {
                 val path = Path()
                 for (i in 0..180) {

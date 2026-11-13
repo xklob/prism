@@ -162,7 +162,7 @@ class PrismDeviceTest {
             ShaderProbe(context, evidence).use { probe ->
                 val firstBeat=rhythm.copy(position=rhythm.barOffset.toDouble())
                 val motion=BeatMotion().update(firstBeat,levels,firstBeat.timestamp,VisualSettings(audioEnabled=true))
-                for (scene in Scene.entries) probe.verifyResponse(scene, motion, "captured")
+                for (scene in Scene.entries.filter { it != Scene.EQUALIZER }) probe.verifyResponse(scene, motion, "captured")
             }
             screenshot("07-aurora-system-live")
             click("Kaleido")
@@ -261,9 +261,9 @@ class PrismDeviceTest {
     private fun difference(a: Bitmap, b: Bitmap): Double {
         var total = 0.0
         var samples = 0
-        // This region is above the tuning controls and below both headers.
-        for (y in (a.height * 0.29).toInt() until (a.height * 0.40).toInt() step 3) {
-            for (x in (a.width * 0.15).toInt() until (a.width * 0.85).toInt() step 3) {
+        // Uncovered preview above the phone panel and to the left of the tablet panel.
+        for (y in (a.height * 0.24).toInt() until (a.height * 0.28).toInt() step 3) {
+            for (x in (a.width * 0.15).toInt() until (a.width * 0.40).toInt() step 3) {
                 val p = a.getPixel(x, y); val q = b.getPixel(x, y)
                 for (shift in listOf(0, 8, 16)) total += abs(((p shr shift) and 255) - ((q shr shift) and 255))
                 samples += 3
@@ -272,7 +272,7 @@ class PrismDeviceTest {
         return total / samples / 255.0
     }
 
-    @Test fun e_transparentOverlayAndLiveGeometry() {
+    @Test fun e_settingsPanelPreservesUncoveredPreviewAndLiveGeometry() {
         launch(Scene.KALEIDO)
         device.findObject(By.desc("Pause")).click()
         SystemClock.sleep(600)
@@ -283,7 +283,7 @@ class PrismDeviceTest {
         SystemClock.sleep(500)
         val overlay = requireNotNull(instrumentation.uiAutomation.takeScreenshot())
         val overlayDifference = difference(original, overlay)
-        assertTrue("Transparent controls must not dim, resize, or reframe the visual: $overlayDifference", overlayDifference < 0.005)
+        assertTrue("The settings panel must not dim, resize, or reframe the uncovered preview: $overlayDifference", overlayDifference < 0.005)
         screenshot("13-transparent-overlay")
         adjust("Recursion depth", 0.14f)
         val changed = requireNotNull(instrumentation.uiAutomation.takeScreenshot())
@@ -336,8 +336,9 @@ class PrismDeviceTest {
         ShaderProbe(context, evidence).use { probe ->
             for (scene in Scene.entries) probe.verifyDownbeatColors(scene)
             for ((label,motion) in listOf("beat" to MusicalMotion(beat=1f), "bar" to MusicalMotion(bar=1f), "flow" to MusicalMotion(flow=0.8f))) {
-                for (scene in Scene.entries) probe.verifyResponse(scene, motion, label)
+                for (scene in Scene.entries.filter { it != Scene.EQUALIZER }) probe.verifyResponse(scene, motion, label)
             }
+            probe.verifyNewPatterns()
         }
     }
 
@@ -461,5 +462,30 @@ class PrismDeviceTest {
         File(evidence,"noise-rejection.txt").writeText("beat_locked_fraction=${locked.toDouble()/checked}\nbar_locked_fraction=${bars.toDouble()/checked}\n")
         assertTrue("Noise cannot sustain a confident beat: $locked/$checked",locked<checked*.05)
         assertEquals("Noise cannot establish a musical measure",0,bars)
+    }
+
+    @Test fun m_drumlessPcmBridgePreservesClockAndResumesOnTheSameGrid() {
+        val bytes=instrumentation.context.assets.open("rhythm/drums128.pcm").use { it.readBytes() }
+        val dry=ShortArray(bytes.size/2).also { ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN).asShortBuffer().get(it) }
+        var state=RhythmState()
+        RhythmAnalyzer(context).use { analyzer ->
+            for (block in 0 until 2100) {
+                val time=block*.02
+                val pcm=ShortArray(960) { i ->
+                    val sample=block*960+i
+                    if (time in 24.0..<36.0) (2500*sin(2*PI*440*sample/48000)+1800*sin(2*PI*660*sample/48000)).roundToInt().toShort()
+                    else dry[sample%(30*48000)] // 30 seconds = 64 beats at 128 BPM.
+                }
+                analyzer.process(pcm,1000+time,1.4f,0) { state=it }
+                if (block==1199 || block==1799 || block==2099) {
+                    File(evidence,"drumless-bridge.txt").appendText("at=$time $state\n")
+                    assertTrue("Established PCM timing must survive the bridge: $state",state.locked && state.barLocked)
+                    assertEquals(128f,state.bpm,1.5f)
+                    val delta=state.position-(state.timestamp-1000-.3)*128/60
+                    assertTrue("Bridge phase must stay on the original grid",abs(delta-round(delta))*60/128<.09)
+                }
+            }
+        }
+        assertFalse(state.holding)
     }
 }

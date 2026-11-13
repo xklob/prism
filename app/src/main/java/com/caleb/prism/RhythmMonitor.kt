@@ -27,7 +27,7 @@ private val MonitorMuted=Color(0xFFCBC9D4)
 private val MonitorText=TextStyle(color=Color.White,shadow=Shadow(Color.Black,Offset(0f,2f),7f))
 
 /** Draws directly over the scene in Tune, with the same status in the main audio controls. */
-@Composable fun RhythmMonitor(running: Boolean, timing: RhythmState, now: Double, energy: Float, details: Boolean=true) {
+@Composable fun RhythmMonitor(running: Boolean, timing: RhythmState, now: Double, energy: Float, details: Boolean=true, showPhrase: Boolean=true) {
     val feedback=RhythmFeedback.from(running,timing,now)
     Column(Modifier.fillMaxWidth().padding(vertical=4.dp), verticalArrangement=Arrangement.spacedBy(5.dp)) {
         Row(verticalAlignment=Alignment.CenterVertically) {
@@ -66,12 +66,12 @@ private val MonitorText=TextStyle(color=Color.White,shadow=Shadow(Color.Black,Of
         if (details) Text(feedback.help,style=MonitorText,color=MonitorMuted,fontSize=10.sp,lineHeight=14.sp)
         if (running) {
             if (timing.tempoAssisted) Text("Tempo assisted by song lookup · phase follows audio", style=MonitorText, color=MonitorMuted, fontSize=10.sp)
-            PhraseMonitor(AudioEngine.phrase)
+            if (showPhrase) PhraseMonitor(AudioEngine.phrase)
         }
     }
 }
 
-@Composable private fun ConfidenceMeter(label: String, value: Float, ready: Boolean, manual: Boolean, modifier: Modifier) {
+@Composable internal fun ConfidenceMeter(label: String, value: Float, ready: Boolean, manual: Boolean, modifier: Modifier) {
     val description=if (manual) "manual" else "${(value*100).roundToInt()}%"
     val color=if (ready) MonitorGood else MonitorPending
     Column(modifier.semantics { contentDescription="$label confidence $description" },verticalArrangement=Arrangement.spacedBy(4.dp)) {

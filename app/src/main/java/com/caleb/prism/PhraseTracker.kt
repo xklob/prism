@@ -4,7 +4,7 @@ import kotlin.math.*
 
 data class PhraseState(
     val bars: Int = 16, val bar: Int? = null, val confidence: Float = 0f,
-    val manual: Boolean = false, val message: String = "Waiting for bar lock"
+    val manual: Boolean = false, val message: String = "Waiting for bar lock", val guided: Boolean = false
 )
 
 /** Causal bar-level structure hypotheses. A track start or BPM never establishes a phrase. */
@@ -15,6 +15,7 @@ class PhraseTracker {
     private var currentBar: Long? = null
     private var anchor: Long? = null
     private var manual = false
+    private var guided = false
     private var confidence = 0.0
     private var sums = DoubleArray(4)
     private var frames = 0
@@ -24,14 +25,19 @@ class PhraseTracker {
 
     fun reset() {
         history.clear(); previous = null; currentBar = null; anchor = null
-        manual = false; confidence = 0.0; sums.fill(0.0); frames = 0
+        manual = false; guided = false; confidence = 0.0; sums.fill(0.0); frames = 0
         lastBoundary = null; lastGoodTime = Double.NEGATIVE_INFINITY
     }
 
     fun align(timing: RhythmState, time: Double) {
         if (!timing.locked || !timing.barLocked) return
         anchor = floor((timing.positionAt(time) - timing.barOffset) / timing.beatsPerBar + .15).toLong()
-        manual = true; confidence = 1.0
+        manual = true; guided = false; confidence = 1.0
+    }
+
+    fun automatic() {
+        if (manual && anchor != null) { manual=false; guided=true; confidence=.95 }
+        else if (!guided) reset()
     }
 
     fun update(timing: RhythmState, levels: AudioLevels, phraseBars: Int): PhraseState {
@@ -48,7 +54,7 @@ class PhraseTracker {
         if (!ready) {
             if (timing.timestamp - lastGoodTime > 2) {
                 // Do not retain a phrase origin through a breakdown with an untrusted bar grid.
-                anchor = null; manual = false; confidence = 0.0
+                anchor = null; manual = false; guided = false; confidence = 0.0
                 history.clear(); currentBar = null; sums.fill(0.0); frames = 0; lastBoundary = null
             }
             return PhraseState(bars = bars)
@@ -64,7 +70,7 @@ class PhraseTracker {
         val origin = anchor ?: return PhraseState(bars = bars, message = "Listening for a phrase change")
         return PhraseState(bars, Math.floorMod(index - origin, bars.toLong()).toInt() + 1,
             (confidence * min(timing.confidence, timing.barConfidence)).toFloat(), manual,
-            if (manual) "Phrase aligned manually" else "Phrase estimated from audio changes")
+            if (manual) "Phrase aligned manually" else if (guided) "Phrase guided by manual alignment" else "Phrase estimated from audio changes", guided)
     }
 
     private fun finishBar(index: Long) {
@@ -78,6 +84,7 @@ class PhraseTracker {
             // Require a sustained whole-bar change, not one loud kick. Detection is retrospective
             // by one bar, so the counter is aligned to the observed boundary without a fake flash.
             if (change > .38 && recentChange > .24 && (lastBoundary == null || index - lastBoundary!! >= 4)) {
+                guided=false
                 val origin = anchor
                 if (origin == null) { anchor = index; confidence = .30 }
                 else {

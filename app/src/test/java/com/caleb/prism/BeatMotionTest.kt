@@ -39,7 +39,7 @@ class BeatMotionTest {
     @Test fun manualAlignmentAndSyncOffsetAffectBeatPhase() {
         val motion=BeatMotion()
         val late=timing.copy(timestamp=10.05,position=.1)
-        assertTrue(motion.update(late,loud,10.05,settings).beat<.75f)
+        assertTrue(motion.update(late,loud,10.05,settings).beat<.9f)
         assertEquals(1f,motion.update(late,loud,10.05,settings.copy(syncOffsetMs=-50f)).beat,.001f)
     }
 
@@ -107,5 +107,27 @@ class BeatMotionTest {
         assertEquals(0f,first.flash,0f); assertEquals(.6f,first.inversion,.001f)
         assertEquals(.3f,motion.update(at(12.15),loud,12.15,s).inversion,.001f)
         assertEquals(MusicalMotion(),motion.update(at(12.16),loud,12.16,s.copy(audioEnabled=false)))
+    }
+    @Test fun geometricAccentsEaseAcrossBeatBoundariesWhilePeakingOnTime() {
+        val motion=BeatMotion()
+        val before=motion.update(at(11.999),loud,11.999,settings)
+        val peak=motion.update(at(12.0),loud,12.0,settings)
+        val after=motion.update(at(12.001),loud,12.001,settings)
+        assertEquals(1f,peak.beat,.001f)
+        assertTrue("No abrupt jump into the beat",kotlin.math.abs(peak.beat-before.beat)<.003f)
+        assertTrue("No abrupt departure from the peak",kotlin.math.abs(peak.beat-after.beat)<.003f)
+        assertTrue(kotlin.math.abs(peak.bar-before.bar)<.003f)
+        for (fps in listOf(30,60,120)) {
+            var previous=0f
+            var largest=0f
+            val renderer=BeatMotion()
+            for (frame in 0..fps) {
+                val time=11.5+frame.toDouble()/fps
+                val value=renderer.update(at(time),loud,time,settings).beat
+                if (frame>0) largest=maxOf(largest,kotlin.math.abs(value-previous))
+                previous=value
+            }
+            assertTrue("Bounded movement at $fps fps: $largest",largest<.85f)
+        }
     }
 }

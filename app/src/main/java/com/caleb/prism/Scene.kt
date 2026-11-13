@@ -9,18 +9,21 @@ enum class Scene(val id: Int, val title: String, val subtitle: String, val accen
     AURORA(0, "Aurora", "Interwoven currents and contour fields", Color(0xFFB7A0FF)),
     KALEIDO(1, "Kaleido", "Recursive geometry inside every reflection", Color(0xFFFF91D0)),
     WORMHOLE(2, "Wormhole", "An infinite tunnel of engraved geometry", Color(0xFF7FDCEB)),
-    JULIA(6, "Julia", "Explore the edge of an evolving fractal", Color(0xFFFFD38E));
+    JULIA(6, "Julia", "Explore the edge of an evolving fractal", Color(0xFFFFD38E)),
+    MANDELBROT(7, "Mandelbrot", "A slow dive into the fractal boundary", Color(0xFF9ECFFF)),
+    EQUALIZER(8, "Equalizer", "Live frequency bands from your audio", Color(0xFF82E8CF));
 
     val detailLabel: String get() = when (this) {
         AURORA -> "Contour density"; KALEIDO -> "Recursion depth"; WORMHOLE -> "Tunnel detail"
-        JULIA -> "Fractal iterations"
+        JULIA, MANDELBROT -> "Fractal iterations"; EQUALIZER -> "Frequency bands"
     }
     val symmetryLabel: String get() = when (this) {
         AURORA -> "Flow harmonics"; KALEIDO -> "Mirror segments"; WORMHOLE -> "Tunnel facets"
-        JULIA -> "Symmetry"
+        JULIA, MANDELBROT, EQUALIZER -> "Symmetry"
     }
     val distortionLabel: String get() = when (this) {
-        WORMHOLE -> "Tunnel twist"; JULIA -> "Fractal shape"; else -> "Distortion"
+        WORMHOLE -> "Tunnel twist"; JULIA -> "Fractal shape"; MANDELBROT -> "Zoom depth"
+        EQUALIZER -> "Bar spacing"; else -> "Distortion"
     }
 }
 
@@ -63,7 +66,16 @@ data class VisualSettings(
     val downbeatInvert: Float = 1f,
     val invertFadeMs: Float = 180f,
     val beatsPerBar: Int = 0,
-    val syncOffsetMs: Float = 0f
+    val syncOffsetMs: Float = 0f,
+    val tabletMonitor: Boolean = true,
+    val eqBuckets: Int = 32,
+    val eqGain: Float = 1f,
+    val eqSpacing: Float = .18f,
+    val eqFalloff: Float = .3f,
+    val eqPeakHold: Float = .6f,
+    val eqMirror: Boolean = false,
+    val eqRadial: Boolean = false,
+    val eqSegments: Boolean = true
 ) {
     fun randomLook(random: Random = Random.Default) = copy(
         palette = Palette.entries[random.nextInt(Palette.entries.size)],
@@ -73,13 +85,16 @@ data class VisualSettings(
         rotation = random.nextFloat() * 0.7f - 0.35f, morph = random.nextFloat() * 0.7f + 0.15f
     )
     fun resetLook() = defaults(scene).copy(source = source, audioEnabled = audioEnabled, sensitivity = sensitivity,
-        beatsPerBar = beatsPerBar, syncOffsetMs = syncOffsetMs, batterySaver = batterySaver, paused = paused)
+        beatsPerBar = beatsPerBar, syncOffsetMs = syncOffsetMs, batterySaver = batterySaver, paused = paused,
+        tabletMonitor = tabletMonitor)
 
     companion object {
         fun defaults(scene: Scene) = when (scene) {
             Scene.KALEIDO -> VisualSettings(scene = scene, complexity = 0.8f, symmetry = 12, distortion = 0.55f)
             Scene.WORMHOLE -> VisualSettings(scene = scene, symmetry = 12, distortion = 0.65f, rotation = 0.08f)
             Scene.JULIA -> VisualSettings(scene = scene, complexity = 0.8f, distortion = 0.65f, rotation = 0.025f, morph = 0.15f)
+            Scene.MANDELBROT -> VisualSettings(scene = scene, complexity = .85f, distortion = .9f, rotation = 0f, morph = 0f, speed = .5f)
+            Scene.EQUALIZER -> VisualSettings(scene = scene, audioEnabled = true, rotation = 0f, morph = 0f)
             else -> VisualSettings(scene = scene)
         }
     }
@@ -109,7 +124,7 @@ class SettingsStore(context: Context) {
         }
         return d.copy(
             source = source,
-            audioEnabled = prefs.getBoolean("scene.${scene.name}.audioEnabled", false),
+            audioEnabled = prefs.getBoolean("scene.${scene.name}.audioEnabled", d.audioEnabled),
             audioAmount = f("audioAmount", d.audioAmount, 0f, 2.5f),
             palette = Palette.entries.getOrElse(prefs.getInt(prefix + "palette", prefs.getInt("palette", d.palette.ordinal))) { d.palette },
             speed = f("speed", d.speed, 0.05f, 2f), intensity = f("intensity", d.intensity, 0.25f, 1.6f),
@@ -128,13 +143,22 @@ class SettingsStore(context: Context) {
             downbeatInvert = f("downbeatInvert", d.downbeatInvert, 0f, 1f),
             invertFadeMs = f("invertFadeMs", d.invertFadeMs, 60f, 400f),
             beatsPerBar = prefs.getInt("beatsPerBar", 0).takeIf { it in listOf(0,3,4) } ?: 0,
-            syncOffsetMs = prefs.getFloat("syncOffsetMs", 0f).let { if (it.isFinite()) it.coerceIn(-250f,250f) else 0f }
+            syncOffsetMs = prefs.getFloat("syncOffsetMs", 0f).let { if (it.isFinite()) it.coerceIn(-250f,250f) else 0f },
+            tabletMonitor = prefs.getBoolean("tabletMonitor", true),
+            eqBuckets = prefs.getInt(prefix + "eqBuckets", d.eqBuckets).coerceIn(8, 64),
+            eqGain = f("eqGain", d.eqGain, .25f, 3f), eqSpacing = f("eqSpacing", d.eqSpacing, .02f, .65f),
+            eqFalloff = f("eqFalloff", d.eqFalloff, .08f, 1.2f), eqPeakHold = f("eqPeakHold", d.eqPeakHold, 0f, 2f),
+            eqMirror = prefs.getBoolean(prefix + "eqMirror", d.eqMirror),
+            eqRadial = prefs.getBoolean(prefix + "eqRadial", d.eqRadial),
+            eqSegments = prefs.getBoolean(prefix + "eqSegments", d.eqSegments)
         )
     }
     fun save(s: VisualSettings) = write(s, "scene.${s.scene.name}.", shared = true)
     private fun write(s: VisualSettings, prefix: String, shared: Boolean) {
         val editor = prefs.edit().putBoolean(prefix + "saved", true).putInt(prefix + "palette", s.palette.ordinal)
-            .putInt(prefix + "symmetry", s.symmetry)
+            .putInt(prefix + "symmetry", s.symmetry).putInt(prefix + "eqBuckets", s.eqBuckets)
+            .putBoolean(prefix + "eqMirror", s.eqMirror).putBoolean(prefix + "eqRadial", s.eqRadial)
+            .putBoolean(prefix + "eqSegments", s.eqSegments)
         for ((key, value) in listOf(
             "speed" to s.speed, "intensity" to s.intensity, "complexity" to s.complexity,
             "distortion" to s.distortion, "zoom" to s.zoom, "lineWidth" to s.lineWidth,
@@ -143,12 +167,14 @@ class SettingsStore(context: Context) {
             "beatImpact" to s.beatImpact, "barImpact" to s.barImpact, "flowImpact" to s.flowImpact,
             "pulseLength" to s.pulseLength, "textureAmount" to s.textureAmount,
             "downbeatFlash" to s.downbeatFlash, "downbeatInvert" to s.downbeatInvert, "invertFadeMs" to s.invertFadeMs,
-            "audioAmount" to s.audioAmount
+            "audioAmount" to s.audioAmount, "eqGain" to s.eqGain, "eqSpacing" to s.eqSpacing,
+            "eqFalloff" to s.eqFalloff, "eqPeakHold" to s.eqPeakHold
         )) editor.putFloat(prefix + key, value)
         if (shared) editor.putInt("scene", s.scene.id).putString("sceneName", s.scene.name)
             .putBoolean(prefix + "audioEnabled", s.audioEnabled).putInt("source", s.source.ordinal)
             .putFloat("sensitivity", s.sensitivity).putBoolean("batterySaver", s.batterySaver)
             .putInt("beatsPerBar", s.beatsPerBar).putFloat("syncOffsetMs", s.syncOffsetMs)
+            .putBoolean("tabletMonitor", s.tabletMonitor)
         editor.apply()
     }
 }

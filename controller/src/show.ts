@@ -93,7 +93,7 @@ export class Show {
       Object.assign(next, { [key]: key === 'symmetry' ? Math.round(value) : value });
     }
     for (const [key, choices] of Object.entries({
-      scene: [0, 1, 2, 6], palette: [0, 1, 2, 3], meter: [3, 4],
+      scene: [0, 1, 2, 6, 7], palette: [0, 1, 2, 3], meter: [3, 4],
       phraseBars: [8, 16, 32], flashEvery: [.25, .5, 1, 3, 4]
     })) {
       if (command[key] === undefined) continue;

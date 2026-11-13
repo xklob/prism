@@ -9,10 +9,12 @@ class RhythmRecovery {
     fun choose(primary: RhythmState,recovered: RhythmState,time: Double): RhythmState {
         val current=if (usingRecovery) recovered else primary
         if (current.manualTempo || current.manualBar) { challenger=null; return current }
+        fun score(state: RhythmState) = state.confidence +
+            (if (state.barLocked && state.conflict == RhythmConflict.NONE) state.barConfidence*.15f else 0f)
         val wantRecovery=if (usingRecovery) {
-            !(primary.locked && primary.confidence>recovered.confidence+.12f)
+            !(primary.locked && score(primary)>score(recovered)+.12f)
         } else {
-            primary.confidence<.70f && recovered.locked && recovered.confidence>primary.confidence+.12f
+            primary.confidence<.70f && recovered.locked && score(recovered)>score(primary)+.12f
         }
         if (wantRecovery != usingRecovery) {
             if (challenger != wantRecovery) { challenger=wantRecovery; since=time }

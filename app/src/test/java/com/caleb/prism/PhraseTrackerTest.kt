@@ -52,4 +52,19 @@ class PhraseTrackerTest {
         tracker.align(timing(10.02), 10.02)
         assertNull(tracker.update(timing(10.04).copy(beatsPerBar = 3), levels(.4f), 32).bar)
     }
+    @Test fun automaticPhraseStartsFromManualOriginThenRemainsRefinable() {
+        val tracker=PhraseTracker()
+        tracker.update(timing(10.0),levels(.4f),16)
+        tracker.align(timing(10.0),10.0)
+        val before=tracker.update(timing(10.02),levels(.4f),16)
+        tracker.automatic()
+        var after=tracker.update(timing(10.04),levels(.4f),16)
+        assertFalse(after.manual)
+        assertTrue(after.guided && after.confidence>.8f)
+        assertEquals(before.bar,after.bar)
+        for (frame in 503..1000) after=tracker.update(timing(frame*.02),levels(.4f),16)
+        assertEquals(6,after.bar)
+        tracker.reset()
+        assertNull(tracker.update(timing(20.02),levels(.4f),16).bar)
+    }
 }
