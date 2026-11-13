@@ -69,7 +69,7 @@ class BeatPeriodicityTest {
         }
     }
 
-    @Test fun missingBeatsLoseConfidenceAndNewTempoCanBeAcquired() {
+    @Test fun drumlessBridgeKeepsTempoButNewTempoAndSilenceStillTakeEffect() {
         val tracker=RhythmTracker(true)
         var result=RhythmState()
         for (frame in 0..650) {
@@ -78,9 +78,9 @@ class BeatPeriodicityTest {
         }
         assertTrue(result.locked)
         for (frame in 651..850) result=tracker.observe(frame*.02,0f,0f,true)
-        assertFalse("A stale envelope cannot keep claiming beat lock",result.locked)
-        assertTrue(result.coasting)
-        assertFalse(result.barLocked)
+        assertTrue("Established timing survives an audible bridge",result.locked)
+        assertTrue(result.holding)
+        assertTrue(result.barLocked)
         for (frame in 851..1700) {
             val (beat,down)=activation(frame*.02,150.0,4,.01)
             result=tracker.observe(frame*.02,beat,down,true)

@@ -52,7 +52,7 @@ private val SongAccent = Color(0xFFD9C6FF)
     }
 }
 
-@Composable fun SongControls(assistant: SongAssistant) {
+@Composable fun SongControls(assistant: SongAssistant, showManualTiming: Boolean = true) {
     val state by assistant.state.collectAsStateWithLifecycle()
     val capture by AudioEngine.status.collectAsStateWithLifecycle()
     val context = LocalContext.current
@@ -115,17 +115,17 @@ private val SongAccent = Color(0xFFD9C6FF)
                 { assistant.setOptions(state.options.copy(phraseBars = bars)) }, label = { Text("$bars bars") }) }
         }
         PhraseMonitor(phrase)
-        Row {
+        if (showManualTiming) Row {
             TextButton(onClick = AudioEngine::alignPhrase, enabled = capture.running && timing.locked) { Text("Phrase starts here", color = SongAccent) }
             TextButton(onClick = AudioEngine::automaticPhrase, enabled = capture.running) { Text("Auto phrase", color = SongAccent) }
         }
-        Text("Phrase estimates use bar-level sound changes and may arrive one bar late. Song position and duration do not establish the first downbeat. Tap Phrase starts here on a known boundary to align it yourself.", style = SongText, color = SongMuted, fontSize = 11.sp)
+        Text("Phrase estimates use bar-level sound changes and may arrive one bar late. Tap Phrase starts here on a known boundary. Auto phrase uses your alignment as its starting point.", style = SongText, color = SongMuted, fontSize = 11.sp)
         Spacer(Modifier.height(10.dp))
     }
 }
 
 @Composable fun PhraseMonitor(phrase: PhraseState) {
-    Text(if (phrase.bar == null) phrase.message else "Phrase ${if (phrase.manual) "manual" else "estimated"} · bar ${phrase.bar}/${phrase.bars} · ${(phrase.confidence * 100).toInt()}% evidence",
+    Text(if (phrase.bar == null) phrase.message else "Phrase ${if (phrase.manual) "manual" else if (phrase.guided) "guided" else "estimated"} · bar ${phrase.bar}/${phrase.bars} · ${(phrase.confidence * 100).toInt()}% evidence",
         style = SongText, color = if (phrase.manual) Color(0xFF9AF0CB) else Color(0xFFFFD38C), fontSize = 10.sp,
         modifier = Modifier.semantics { contentDescription = if (phrase.bar == null) "Phrase not aligned" else "Phrase bar ${phrase.bar} of ${phrase.bars}, ${if (phrase.manual) "manual" else "estimated"}" })
 }

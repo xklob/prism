@@ -8,17 +8,17 @@ test('start and settings share a future bar boundary, repeated edits do not post
   show.command({ action: 'start' }, 100);
   assert.equal(show.active(1099).running, false);
   assert.equal(show.active(1100).running, true);
-  show.command({ action: 'settings', scene: 2 }, 1200);
+  show.command({ action: 'settings', scene: 7 }, 1200);
   const first = show.snapshot(1200).cues[1]!;
   assert.ok(first.effective >= 2200);
   assert.equal(beatAt(first, first.effective) % 4, 0);
   show.command({ action: 'settings', palette: 3, complexity: .9 }, 1300);
   const revised = show.snapshot(1300).cues[1]!;
   assert.equal(revised.effective, first.effective);
-  assert.equal(revised.scene, 2);
+  assert.equal(revised.scene, 7);
   assert.equal(revised.palette, 3);
   assert.equal(revised.previousScene, 1);
-  assert.equal(show.active(revised.effective).scene, 2);
+  assert.equal(show.active(revised.effective).scene, 7);
 });
 test('tempo change preserves the beat at the scheduled boundary', () => {
   const show = new Show();

@@ -23,6 +23,8 @@ data class RhythmFeedback(
                 !audible -> "Waiting for sound"
                 timing.manualTempo -> "Manual tempo"
                 timing.conflict == RhythmConflict.TEMPO -> "Tempo uncertain"
+                timing.holding -> "Holding tempo"
+                timing.guided -> "Guided auto"
                 timing.coasting -> "Coasting"
                 beatReady -> "Beat locked"
                 timing.bpm > 0f -> "Beat uncertain"
@@ -30,6 +32,8 @@ data class RhythmFeedback(
             }
             val bar=when {
                 barReady && timing.manualBar -> "Bar aligned"
+                barReady && timing.holding -> "Bar predicted · ${timing.beatsPerBar} beats"
+                barReady && timing.guided -> "Bar guided · ${timing.beatsPerBar} beats"
                 barReady -> "Bar locked · ${timing.beatsPerBar} beats"
                 timing.conflict == RhythmConflict.BAR -> "Bar uncertain"
                 else -> "Finding bar"
@@ -39,6 +43,9 @@ data class RhythmFeedback(
                 !fresh -> "Audio analysis stopped updating. Reconnect audio."
                 !audible -> "No sound received. Play music or try another input."
                 timing.conflict == RhythmConflict.TEMPO -> "Tempo is ambiguous. Try Tap tempo or ½ / 2× BPM."
+                timing.holding -> if (timing.tempoAssisted) "Song tempo supports the established beat through this section."
+                    else "Keeping the established tempo through this section."
+                timing.guided -> "Automatic timing starts from your manual alignment and follows new audio."
                 timing.coasting -> "Beat evidence faded. Waiting for the next clear beat."
                 !beatReady -> "Sound received; still finding a steady beat."
                 !barReady -> "Beat found; bar start uncertain. Tap Bar starts here on beat 1."

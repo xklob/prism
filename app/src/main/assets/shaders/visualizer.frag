@@ -24,6 +24,13 @@ uniform int uPalette;
 // Beat pulse, bar accent, musical flow, optional treble texture.
 uniform vec4 uRhythm;
 uniform vec2 uDownbeat; // Brief white flash and fading RGB inversion on beat 1.
+uniform float uSpectrum[64];
+uniform float uPeaks[64];
+uniform int uEqCount;
+uniform float uEqSpacing;
+uniform int uEqMirror;
+uniform int uEqRadial;
+uniform int uEqSegments;
 const float PI = 3.14159265359;
 const float TAU = 6.28318530718;
 
@@ -46,7 +53,11 @@ float line(float field, float weight) {
     float halfWidth = uLineWidth * weight * max(1.0, min(uResolution.x, uResolution.y) / 720.0) * 0.5;
     return 1.0 - smoothstep(max(0.0, halfWidth - 0.65), halfWidth + 0.65, pixels);
 }
-float periodic(float phase, float weight) { return line(sin(phase), weight); }
+float periodic(float phase, float weight) {
+    // Suppress detail finer than a pixel instead of letting it flicker at the tunnel core.
+    float footprint = length(vec2(dFdx(phase), dFdy(phase)));
+    return line(sin(phase), weight) * (1.0 - smoothstep(1.1, 2.8, footprint));
+}
 vec2 fold(vec2 p, float segments) {
     float r = length(p), wedge = TAU / segments;
     float a = abs(mod(atan(p.y, p.x) + wedge * 0.5, wedge) - wedge * 0.5);
@@ -64,14 +75,16 @@ vec3 aurora(vec2 p, float t) {
     float frequency = (9.0 + uComplexity * 26.0) * (1.0 + (uRhythm.z + uRhythm.w) * 0.12);
     float phase = q.x * frequency + sin(q.y * (1.5 + uSymmetry * 0.2)) * 2.2 - t * 0.4;
     float crossing = q.y * frequency * 0.82 + cos(q.x * 2.1 - m * 0.2 + uRhythm.y) * 2.2;
-    float ribbons = periodic(phase, 1.0);
-    float threads = periodic(crossing, 0.85);
-    float etch = periodic(phase * 2.0 + crossing * 0.3, 0.65);
-    vec3 c = palette(q.x * 0.13 + q.y * 0.10) * ribbons;
-    c += palette(q.y * 0.14 + 0.32) * threads * 0.72;
-    c += palette(q.x * 0.1 + 0.64) * etch * (0.15 + uComplexity * 0.27);
-    float cells = sin(phase) * sin(crossing);
-    c += palette(cells * 0.07 + q.y * 0.1) * step(0.88, cells) * 0.10;
+    // Broad satin folds give the fine contours a readable structure and sense of depth.
+    float foldLight = 0.5 + 0.5 * sin(phase * 0.18 + sin(q.y * 1.2) * 1.4);
+    float ribbons = periodic(phase, 1.15);
+    float threads = periodic(crossing, 0.72);
+    float weave = smoothstep(-0.35, 0.35, sin(phase * 0.18));
+    vec3 base = palette(q.x * 0.065 + q.y * 0.045);
+    vec3 c = base * (0.035 + pow(foldLight, 2.0) * 0.22);
+    c += base * ribbons * (0.45 + foldLight * 0.35);
+    c = mix(c, palette(q.y * 0.07 + 0.18) * 0.75, threads * (0.18 + weave * 0.42));
+    c += palette(q.x * 0.06 + 0.12) * periodic(phase * 0.25, 1.8) * 0.24;
     return c;
 }
 
@@ -89,27 +102,96 @@ vec3 kaleido(vec2 p, float t) {
         float diamond = abs(q.x) + abs(q.y) - 0.29;
         float circle = length(q - vec2(0.12, 0.0)) - 0.20 - (uRhythm.z + uRhythm.w) * 0.045;
         float frame = max(abs(q.x), abs(q.y)) - 0.33;
-        float detail = line(diamond, 1.0) + line(circle, 0.75) * 0.65 + line(frame, 0.65) * 0.38;
-        c += palette(f * 0.115 + radius * 0.15) * detail * (0.67 - f * 0.035);
+        float detail = max(line(diamond, 1.2), max(line(circle, 0.85) * 0.7, line(frame, 0.7) * 0.3));
+        float hierarchy = pow(0.84, f);
+        vec3 ink = palette(f * 0.065 + radius * 0.09);
+        float facet = (1.0 - smoothstep(0.0, 0.05, diamond)) * smoothstep(-0.32, -0.20, diamond);
+        c += ink * facet * (0.10 + 0.08 * smoothstep(-0.3, 0.3, q.y)) * hierarchy;
+        c = mix(c, ink, detail * (0.85 * hierarchy + 0.12));
+        c += ink * exp(-abs(diamond) * 5.0) * 0.025 * hierarchy;
     }
-    c += palette(radius * 0.3 + 0.2) * periodic(radius * (11.0 + uComplexity * 11.0) - t * 0.12, 0.7) * 0.25;
+    float petals = radius * (1.0 + 0.045 * cos(atan(p.y, p.x) * uSymmetry));
+    c += palette(radius * 0.1 + 0.12) * periodic(petals * 7.0 - t * 0.07, 1.2) * 0.25;
+    c *= 0.82 + 0.18 * cos(radius * 1.7);
     return c;
 }
 
 vec3 wormhole(vec2 p, float t) {
-    float r = max(length(p), 0.018);
+    float r = max(length(p), 0.004);
     float a = atan(p.y, p.x);
     float depth = -log(r) * (3.0 + uComplexity * 4.0) + t * 0.75 + uRhythm.x * 0.85 + uRhythm.y * 0.32;
     float around = a * uSymmetry / TAU + (uDistortion + uRhythm.y * 0.65) * (depth * 0.20 + sin(depth * 0.4 + uMorphTime * 0.2));
     vec2 tile = vec2(around, depth);
     vec2 cell = fract(tile) - 0.5;
-    float circuit = periodic(PI * tile.x, 1.0) + periodic(PI * tile.y, 0.85);
+    float circuit = max(periodic(PI * tile.x, 1.15), periodic(PI * tile.y, 1.0));
     float diagonal = periodic(PI * (tile.x + tile.y), 0.65);
     float inlay = line(max(abs(cell.x), abs(cell.y)) - 0.31, 0.8);
     float gem = line(abs(cell.x) + abs(cell.y) - 0.20 - (uRhythm.z + uRhythm.w) * 0.10, 0.75);
-    vec3 c = palette(depth * 0.055 + a / TAU * 0.2) * circuit * 0.8;
-    c += palette(depth * 0.055 + 0.35) * (diagonal * 0.3 + inlay * 0.55 + gem * 0.65);
-    return c * smoothstep(0.022, 0.10, r);
+    float detailFade = 1.0 - smoothstep(0.5, 1.5, length(fwidth(tile)));
+    // Periodic angular coloring closes the atan seam, including odd facet counts.
+    vec3 ink = palette(depth * 0.035 + cos(a * 2.0) * 0.055);
+    float panel = pow(max(0.0, 1.0 - max(abs(cell.x), abs(cell.y)) * 2.0), 0.6);
+    vec3 c = ink * (0.035 + panel * 0.10) * detailFade;
+    c += ink * circuit * 0.75;
+    c = mix(c, palette(depth * 0.035 + 0.16), (inlay * 0.42 + gem * 0.32) * detailFade);
+    c += ink * diagonal * 0.08;
+    return c * smoothstep(0.008, 0.12, r);
+}
+
+vec3 mandelbrot(vec2 p, float t) {
+    // A smooth out-and-back logarithmic dive avoids a hard reset and float-precision collapse.
+    float travel = 0.5 - 0.5 * cos(t * 0.13);
+    float zoom = exp2(travel * (4.0 + uDistortion * 3.0));
+    vec2 target = vec2(-0.7436439, 0.1318259);
+    vec2 center = mix(vec2(-0.5, 0.0), target, 1.0 - 1.0 / zoom);
+    vec2 c = center + p * 1.55 / zoom;
+    vec2 z = vec2(0.0), derivative = vec2(0.0);
+    float count = 0.0, escaped = 0.0, distance = 0.0;
+    int iterations = 80 + int(uComplexity * 176.0);
+    for (int i = 0; i < 256; i++) {
+        if (i >= iterations) break;
+        derivative = 2.0 * vec2(z.x * derivative.x - z.y * derivative.y, z.x * derivative.y + z.y * derivative.x) + vec2(1.0, 0.0);
+        z = vec2(z.x * z.x - z.y * z.y, 2.0 * z.x * z.y) + c;
+        float magnitude = dot(z, z);
+        if (magnitude > 256.0) {
+            count = float(i) + 1.0 - log2(log2(magnitude) * 0.5);
+            distance = 0.5 * log(magnitude) * sqrt(magnitude) / max(length(derivative), 0.00001);
+            escaped = 1.0;
+            break;
+        }
+    }
+    float pixel = 3.1 / (zoom * uZoom * min(uResolution.x, uResolution.y));
+    float edge = smoothstep(0.0, pixel * 1.5, distance);
+    float contours = periodic(count * 1.25, 0.9);
+    vec3 outside = palette(count * 0.025) * (0.30 + 0.38 * edge + 0.22 * contours);
+    return mix(vec3(0.008, 0.01, 0.025), outside, escaped * edge);
+}
+
+vec3 equalizer(vec2 uv) {
+    float coordinate = clamp((uv.x - 0.055) / 0.89, 0.0, 0.99999);
+    float vertical = (uv.y - 0.12) / 0.74;
+    float side = step(0.055, uv.x) * step(uv.x, 0.945);
+    if (uEqRadial == 1) {
+        vec2 p = (uv * 2.0 - 1.0) * uResolution / min(uResolution.x, uResolution.y);
+        coordinate = fract(atan(p.y, p.x) / TAU + 0.5 + uRotation / TAU);
+        vertical = (length(p) - 0.26) / 0.65;
+        side = 1.0;
+    } else if (uEqMirror == 1) vertical = abs(uv.y - 0.5) / 0.38;
+    if (uEqRadial == 1 && uEqMirror == 1) vertical = abs(vertical);
+    int count = clamp(uEqCount, 8, 64);
+    float bucket = coordinate * float(count);
+    int index = min(int(bucket), count - 1);
+    float aa = max(fwidth(vertical), 0.001);
+    float gap = uEqSpacing * 0.5;
+    float horizontal = smoothstep(gap, gap + fwidth(bucket), fract(bucket)) *
+        (1.0 - smoothstep(1.0 - gap - fwidth(bucket), 1.0 - gap, fract(bucket)));
+    float height = uSpectrum[index];
+    float bar = (1.0 - smoothstep(height - aa, height + aa, vertical)) * smoothstep(-aa, aa, vertical) * step(0.001, height);
+    if (uEqSegments == 1) bar *= 1.0 - smoothstep(0.72, 0.88, fract(vertical * 32.0));
+    float peak = (1.0 - smoothstep(0.003, 0.003 + aa, abs(vertical - uPeaks[index]))) * step(0.006, uPeaks[index]);
+    vec3 ink = palette(coordinate * 0.65 + vertical * 0.12);
+    float rail = (1.0 - smoothstep(0.0, aa * 1.3, abs(vertical))) * 0.12;
+    return (ink * bar * (0.65 + 0.35 * vertical) + mix(ink, vec3(1.0), 0.55) * peak + ink * rail) * horizontal * side;
 }
 
 vec3 julia(vec2 p, float t) {
@@ -142,6 +224,8 @@ vec3 scene(int mode, vec2 p, float t) {
     if (mode == 0) return aurora(p, t);
     if (mode == 1) return kaleido(p, t);
     if (mode == 2) return wormhole(p, t);
+    if (mode == 7) return mandelbrot(p, t);
+    if (mode == 8) return equalizer(vUv);
     return julia(p, t);
 }
 void main() {

@@ -319,7 +319,7 @@ class CrowdClient(private val context: Context,
                     c.number("anchor", -1e14, 1e14), c.number("beat", -1e9, 1e9),
                     c.number("bpm", 40.0, 240.0), meter, phraseBars, c.getLong("phraseOrigin"),
                     c.getBoolean("running"), mode == "flash", settings,
-                    c.getInt("previousScene").also { require(it in listOf(0,1,2,6)) },
+                    c.getInt("previousScene").also { id -> require(Scene.entries.any { it.id == id }) },
                     c.number("transitionAt", 0.0, sent + 12000), every,
                     c.number("flashMs", 16.0, 100.0), c.number("invertMs", 60.0, 400.0))
             }

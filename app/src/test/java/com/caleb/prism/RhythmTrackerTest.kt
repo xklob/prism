@@ -71,7 +71,7 @@ class RhythmTrackerTest {
         assertEquals(140f,next.bpm,1.5f)
     }
 
-    @Test fun gapsCoastThenLoseConfidenceEvenWhileInputRemainsAudible() {
+    @Test fun drumlessBridgesKeepEstablishedTempoAndBarThenEventuallyExpire() {
         val tracker=RhythmTracker()
         assertTrue(feed(tracker,120.0,4).barLocked)
         val shortlyAfter=tracker.observe(24.02,0f,0f,true)
@@ -79,11 +79,14 @@ class RhythmTrackerTest {
         var state=shortlyAfter
         for (frame in 2..60) state=tracker.observe(24+frame*.02,0f,0f,true)
         assertTrue(state.signalPresent)
-        assertTrue(state.coasting)
-        assertFalse("Coasting is not evidence for a new downbeat",state.barLocked)
+        assertTrue(state.holding)
+        assertTrue("An established bar continues through a drumless bridge",state.barLocked)
         for (frame in 61..400) state=tracker.observe(24+frame*.02,0f,0f,true)
+        assertTrue(state.locked && state.barLocked && state.holding)
+        assertEquals(120f,state.bpm,1f)
+        for (frame in 401..1300) state=tracker.observe(24+frame*.02,0f,0f,true)
         assertTrue(state.confidence<.05f && state.barConfidence<.05f)
-        assertTrue(feed(tracker,120.0,4,start=32.02).barLocked)
+        assertTrue(feed(tracker,120.0,4,start=50.02).barLocked)
     }
 
     @Test fun weakOffbeatFlourishesDoNotStealAnEstablishedGrid() {

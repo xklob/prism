@@ -37,6 +37,7 @@ object AudioEngine {
     fun doubleTempo() { commands.add(TimingCommand(4,System.nanoTime()/1e9)) }
     fun alignPhrase() { commands.add(TimingCommand(5,System.nanoTime()/1e9)) }
     fun automaticPhrase() { commands.add(TimingCommand(6,System.nanoTime()/1e9)) }
+    fun alignBeat() { commands.add(TimingCommand(7,System.nanoTime()/1e9)) }
     @Volatile var tempoHint: TempoHint? = null
     @Volatile var songTimingRevision = 0
     @Volatile var phraseBars = 16
@@ -153,11 +154,12 @@ object AudioEngine {
                                 when (command.action) {
                                     0 -> timing.tracker.tap(command.time)
                                     1 -> timing.tracker.alignBar(command.time)
-                                    2 -> { timing.automaticTiming(); phraseTracker.reset() }
+                                    2 -> { timing.automaticTiming(command.time); phraseTracker.automatic() }
                                     3 -> timing.tracker.scaleTempo(0.5,command.time)
                                     4 -> timing.tracker.scaleTempo(2.0,command.time)
                                     5 -> { timing.tracker.alignBar(command.time); phraseAlignment = command.time }
-                                    6 -> phraseTracker.reset()
+                                    6 -> phraseTracker.automatic()
+                                    7 -> timing.tracker.alignBeat(command.time)
                                 }
                             }
                             timing.process(samples,firstSampleTime,sensitivity,beatsPerBar) {

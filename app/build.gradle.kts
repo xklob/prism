@@ -19,8 +19,8 @@ android {
         applicationId = "com.caleb.prism"
         minSdk = 29
         targetSdk = 36
-        versionCode = 10
-        versionName = "1.8.0"
+        versionCode = 12
+        versionName = "1.9.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     buildFeatures { compose = true }

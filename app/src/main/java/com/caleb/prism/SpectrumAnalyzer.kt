@@ -5,7 +5,8 @@ import kotlin.math.*
 data class AudioLevels(
     val bass: Float = 0f, val mid: Float = 0f, val high: Float = 0f,
     val energy: Float = 0f,
-    val bands: FloatArray = FloatArray(32)
+    val bands: FloatArray = FloatArray(32),
+    val spectrum: FloatArray = FloatArray(64)
 )
 
 /** Streaming Hann-windowed FFT. Input PCM and derived levels stay in memory only. */
@@ -54,11 +55,23 @@ class SpectrumAnalyzer(private val sampleRate: Int = 48000, val size: Int = 2048
             val high = 35.0 * (14000.0 / 35.0).pow((i + 1) / 32.0)
             smooth(normalized(power(low, high)), previous.bands[i])
         }
+        // Fractional bin overlap avoids empty bass buckets when a display band is narrower
+        // than the FFT resolution. These are live measurements, never simulated animation.
+        val spectrum = FloatArray(64) { band ->
+            val low = 35.0 * (16000.0 / 35.0).pow(band / 64.0) * size / sampleRate
+            val high = 35.0 * (16000.0 / 35.0).pow((band + 1) / 64.0) * size / sampleRate
+            var sum = 0.0
+            for (bin in max(1, floor(low - .5).toInt())..min(size / 2 - 1, ceil(high + .5).toInt())) {
+                val overlap = (min(high, bin + .5) - max(low, bin - .5)).coerceAtLeast(0.0)
+                sum += (real[bin] * real[bin] + imaginary[bin] * imaginary[bin]) * overlap
+            }
+            normalized(sqrt(sum) / size * 3.2)
+        }
         return AudioLevels(
             smooth(normalized(bassPower), previous.bass),
             smooth(normalized(power(250.0, 2500.0)), previous.mid),
             smooth(normalized(power(2500.0, 16000.0)), previous.high),
-            smooth(normalized(rms), previous.energy), bands
+            smooth(normalized(rms), previous.energy), bands, spectrum
         ).also { previous = it }
     }
 
