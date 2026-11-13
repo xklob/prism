@@ -4,7 +4,7 @@
 
 A native Android psychedelic visualizer. Kotlin, Jetpack Compose, and seven OpenGL ES 3 patterns. Android 10 or newer.
 
-[Download prism 1.11.0](https://github.com/xklob/prism/releases/tag/v1.11.0) for persistent media playback controls, Kaleidoscope, per-pattern tuning, collapsible tablet sidebars, and session recording.
+[Download prism 1.12.0](https://github.com/xklob/prism/releases/tag/v1.12.0) for global bloom/blur effects, adaptive rendering quality, persistent playback controls, and session recording.
 
 ## Screenshots
 
@@ -24,6 +24,15 @@ Tablet sidebars minimize independently; the song and timing monitor stays at bot
 ![Both tablet sidebars minimized into edge handles](docs/screenshots/tablet-minimized.png)
 
 These are unedited Android 16 emulator captures at phone and tablet window sizes. The playback-control views show 1.11 with a synthetic media-session fixture; the help and minimized-panel views show 1.10. No audio capture is connected in these views. On-screen FPS reflects the emulator, not physical-device performance.
+
+Global bloom and blur controls, shared across all seven patterns:
+
+<p>
+  <img src="docs/screenshots/tablet-global-effects.png" width="720" alt="Global effects controls on a landscape tablet">
+  <img src="docs/screenshots/phone-global-effects.png" width="240" alt="Global effects controls in the phone panel">
+</p>
+
+These two views are unedited 1.12 Android 16 emulator captures with bloom and blur enabled and no audio connected.
 
 ## Crowd mode
 
@@ -84,6 +93,14 @@ Recording works with ambient or audio-reactive patterns. The top-right control u
 
 Video targets 30 fps, preserves the screen's aspect ratio, and uses the largest supported encoder size up to a 1,920-pixel longest edge. Orientation locks for the recording. Actual frame rate depends on rendering and encoding capacity. Microphone audio is mono; system audio is stereo where supported. The recorder receives the original 48 kHz PCM before analysis gain, using the same capture clock as the visuals. A common timeline preserves initial silence and capture gaps rather than shifting audio against the video. Pending files are made visible only after all recorded tracks finish successfully; failed exports are removed.
 
+## Global effects and adaptive quality
+
+**App settings → Effects** adds bloom and blur to every local pattern. Bloom spreads light from bright colors; its threshold selects the highlights and its radius sets the halo size. Blur softens the whole image. Each has its own amount and radius, with a shared strength control and **Global effects** bypass that retains the settings. Economy, Balanced, and High control the resolution of the blur passes. Effects start bypassed and persist across pattern changes.
+
+The renderer completes the pattern and effects once, then sends that same image to the screen and recording encoder. Settings and other overlays stay outside this pipeline. Encoder dimensions remain fixed during recording; reducing render quality reduces image detail, not the exported video's dimensions. Crowd shows retain the controller's visual output without local post-effects.
+
+**App settings → Display** provides a 30/60 FPS target and **Adaptive quality**, enabled by default. Sustained low FPS lowers rendering resolution in steps, down to 45% of the base size; recovery requires sustained healthy performance. Android's [thermal status](https://developer.android.com/reference/android/os/PowerManager#getCurrentThermalStatus()) can cap quality sooner. The panel reports the current scale, dimensions, and thermal state. The target is limited by the display and Battery saver, and is not a guaranteed frame rate. Animation speed, capture, and timing analysis remain independent of these quality changes.
+
 ## Kaleidoscope
 
 A separate pattern inspired by [AudioLabs Kaleidoscope](https://audiolabs.dev/). Reference-video analysis and the site's public client shader informed an independent folded-wire distance field and volume renderer. AudioLabs code and private reference media are not included in prism.
@@ -120,7 +137,7 @@ Each pattern also has **Color** for palettes, hue, saturation, brightness, contr
 
 Tap **ⓘ** beside a setting for a detailed tooltip explaining its effect and tradeoffs. Help stays open until dismissed, supports hover/long press, and does not change the setting. Geometry, motion, color, audio effects, input, song assistance, display, saved looks, and manual timing controls all have contextual help.
 
-**App settings** is separate: **Audio** holds source selection, input gain, synchronization offset, and timing status; **Song** holds optional identification and phrase settings; **Display** holds battery saver and the tablet monitor. Shared capture and display preferences are not overwritten by recalling a visual look.
+**App settings** is separate: **Audio** holds source selection, input gain, synchronization offset, and timing status; **Song** holds optional identification and phrase settings; **Effects** holds global bloom and blur; **Display** holds battery saver and the tablet monitor. Shared capture and display preferences are not overwritten by recalling a visual look.
 
 Audio response follows musical timing. Each predicted beat uses a short eased rise that peaks on the beat, followed by a smooth return, avoiding an abrupt scale reset; the first beat of a detected bar adds a separate accent; the pattern’s breathing control varies geometry or palette smoothly across the beat or bar. The detector uses two complementary local beat/downbeat models, then tracks tempo, phase, and competing 3-beat and 4-beat bar hypotheses. Each model has its own tracker; switching requires sustained stronger evidence, and manual alignment stays in control. Confidence includes how well recent detected beats line up with the actual visual clock. Weak offbeat predictions cannot displace an established grid. When recent beats stop matching, the tracker can discard stale evidence and reacquire a quieter rhythm, including phase changes at the same BPM. Sustained disagreement between equally strong models is reported as uncertain instead of silently treating one as reliable. Beat and bar lock are separate: repeated beats alone do not establish a measure boundary. Allow a few seconds for beat lock and several measures for bar evidence. Silence stops modulation.
 
@@ -140,7 +157,7 @@ Automatic timing can be ambiguous, especially with syncopation, sparse drums, te
 
 Each scene remembers its own settings. **Shuffle** makes a new visual variation without changing capture or playback state. **Save** stores one favorite look per scene, including its reaction settings; **Recall** restores it; **Reset** returns that scene to its defaults. None of these actions changes the audio enable switch or starts capture. Existing visual preferences migrate automatically. Julia retains its original stable ID; an installation last using a removed scene starts on Aurora with audio disabled. Saved looks do not contain capture permission tokens.
 
-Contours use pixel-width antialiasing without glow or blur. Most patterns render at the screen's native resolution; Kaleidoscope uses the size cap described above. AudioLabs (<https://audiolabs.dev>) was inspected as a reference for visual density and detailed controls; prism's shaders and Android UI are original implementations.
+Contours use pixel-width antialiasing; optional bloom and blur are applied afterward. Most patterns render at the screen's native resolution; Kaleidoscope uses the size cap described above. AudioLabs (<https://audiolabs.dev>) was inspected as a reference for visual density and detailed controls; prism's shaders and Android UI are original implementations.
 
 The visualizer and live beat/bar/phrase analysis work offline without an account, analytics, or ads. Optional song assistance uses the network as described below. Audio stays in memory unless you explicitly start recording or enable AudD identification. Recordings stay on the device until you choose to share them. Analysis runs every 20 ms on the capture worker; rendering predicts beat phase at display refresh rate. Android capture timestamps and frontend-delay compensation keep analysis on the same clock as the visuals. Scene and tuning preferences are saved locally. Capture consent is never saved or reused across sessions.
 
@@ -181,6 +198,8 @@ The debug APK is in `app/build/outputs/apk/debug/` and uses package `com.caleb.p
 ```
 
 ## Verification
+
+Version 1.12 passed release build/lint and 85 Android unit tests. GPU checks render all seven patterns, compare effect bypass and zero strength pixel-for-pixel with the original image, check visible bloom and blur, and exercise all effect-quality levels and render resizing. Phone and tablet checks cover shared settings persistence and help dismissal. Silent-video and stereo system-audio recording regressions passed with effects enabled. The signed APK upgraded 1.11 with its signing identity and settings intact. Physical-device performance remains unmeasured.
 
 Version 1.11 passed release build/lint, the 82 Android unit tests, and focused phone/tablet media-session tests. Those checks send real previous, play, pause, and next commands to a separate fixture app, including fullscreen use, missing metadata, unsupported actions, finished-track restart, empty queues, destroyed sessions, and permission revocation. Tablet layout checks and a silent-video recording regression also passed. Playback tests keep Song assist and audio capture off.
 
@@ -239,11 +258,11 @@ Most patterns target native resolution and 60 fps; Kaleidoscope uses a bounded r
 
 These are proposals, not current features:
 
-- **Shared effect overlays:** bloom, blur, chromatic aberration, grain, or trails on any pattern. A shared offscreen render pipeline could apply them to the screen and recordings while keeping controls clear. Downsampled blur/bloom, strength controls, and a master bypass would keep the GPU cost manageable.
+- **More effect overlays:** chromatic aberration, grain, and trails alongside the existing bloom and blur.
 - **Named looks and transitions:** a preset library, favorites, and smooth A/B morphing between compatible looks.
 - **Phrase-driven scene changes:** queue a new pattern or palette on a confirmed phrase boundary, with a manual cue button when detection is uncertain.
 - **Live performance controls:** a small set of assignable macros, MIDI/OSC input, and touch gestures for the current pattern.
 - **A deeper Mandelbrot explorer:** selectable destinations, pan/zoom navigation, and a precision strategy for dives beyond the current mobile-safe range.
 - **Recording quality controls:** frame rate, resolution, bitrate, free-space estimates, and a session gallery with thumbnails.
-- **Performance polish:** measure Pixel Tablet GPU/thermal behavior, then adapt fractal detail to a chosen frame-rate target. Keep capture and timing analysis independent of rendering load.
+- **Performance polish:** measure physical Pixel Tablet GPU/thermal behavior and refine the adaptive-quality thresholds for sustained sessions.
 - **Timing review tools:** a compact beat-grid history and exportable diagnostics, making drift, half-time ambiguity, and confidence changes easier to understand.

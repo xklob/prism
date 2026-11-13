@@ -195,7 +195,8 @@ fun PrismApp(
                 songAssistant = songAssistant, initialTab = tuningTab, tablet = tablet,
                 appSettings = appSettings, switchScope = { appSettings = !appSettings; tuningTab = if (appSettings) "Audio" else settings.scene.shapeTab },
                 minimized = settingsMinimized, onMinimize = { settingsMinimized = !settingsMinimized },
-                timingMinimized = timingMinimized, onTimingMinimize = { timingMinimized = !timingMinimized }
+                timingMinimized = timingMinimized, onTimingMinimize = { timingMinimized = !timingMinimized },
+                performance = { surface?.engine?.qualityReport ?: RenderQualityReport() }
             )
             if (tablet && settings.tabletMonitor && !crowdOpen) TabletMonitor(songAssistant,
                 Modifier.align(Alignment.BottomStart).safeDrawingPadding().padding(16.dp).width(300.dp))

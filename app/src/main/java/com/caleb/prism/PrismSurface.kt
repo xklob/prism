@@ -5,6 +5,7 @@ import android.opengl.GLES30.*
 import android.opengl.GLSurfaceView
 import android.os.SystemClock
 import android.os.Build
+import android.os.PowerManager
 import android.view.Choreographer
 import android.opengl.EGL14
 import android.opengl.EGLExt
@@ -40,6 +41,13 @@ class PrismSurface @JvmOverloads constructor(context: Context, onError: (String)
     }
     private var cancelFrames: (() -> Unit)? = null
     private var resumed = true
+    private val power = context.getSystemService(PowerManager::class.java)
+    private val thermalListener = PowerManager.OnThermalStatusChangedListener { engine.thermalStatus = it }
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        engine.displayHz = display?.refreshRate ?: 60f
+        runCatching { engine.thermalStatus = power.currentThermalStatus; power.addThermalStatusListener(context.mainExecutor, thermalListener) }
+    }
     fun updateCrowd(client: CrowdClient) {
         engine.crowd = client
         val following = client.connected
@@ -81,10 +89,13 @@ class PrismSurface @JvmOverloads constructor(context: Context, onError: (String)
     override fun onResume() {
         super.onResume()
         resumed = true
+        engine.resumedAtNs = SystemClock.elapsedRealtimeNanos()
+        engine.displayHz = display?.refreshRate ?: 60f
         engine.crowd?.let { updateCrowd(it) }
     }
     override fun onDetachedFromWindow() {
         cancelFrames?.invoke(); cancelFrames = null
+        runCatching { power.removeThermalStatusListener(thermalListener) }
         super.onDetachedFromWindow()
     }
     internal fun beginRecording(encoder: SessionEncoder, started: () -> Unit) = queueEvent {
@@ -128,6 +139,12 @@ class PrismRenderer(private val context: Context, private val onError: (String) 
     @Volatile var touchX = 0f
     @Volatile var touchY = 0f
     private var program = 0
+    private var post: PostProcessor? = null
+    private var quality = RenderQuality()
+    @Volatile var thermalStatus = 0
+    @Volatile var displayHz = 60f
+    @Volatile var resumedAtNs = 0L
+    @Volatile var qualityReport = RenderQualityReport(); private set
     private val uniforms = mutableMapOf<String, Int>()
     private var previousFrame = 0L
     private var time = 0f
@@ -152,6 +169,9 @@ class PrismRenderer(private val context: Context, private val onError: (String) 
             it.close()
         }
         recording = null
+        // A new GL context invalidates all previous object names.
+        post = null
+        quality = RenderQuality()
         try {
             fun compile(type: Int, asset: String): Int {
                 val shader = glCreateShader(type)
@@ -184,6 +204,7 @@ class PrismRenderer(private val context: Context, private val onError: (String) 
             glBufferData(GL_ARRAY_BUFFER, 32, vertices, GL_STATIC_DRAW)
             glVertexAttribPointer(0, 2, GL_FLOAT, false, 0, 0); glEnableVertexAttribArray(0)
             glDisable(GL_DEPTH_TEST)
+            post = PostProcessor(context)
             previousFrame = 0L
             Log.i("PrismRenderer", "Shaders linked; renderer=${glGetString(GL_RENDERER)}")
         } catch (e: Exception) {
@@ -204,12 +225,19 @@ class PrismRenderer(private val context: Context, private val onError: (String) 
 
     override fun onDrawFrame(gl: GL10?) {
         val started = SystemClock.elapsedRealtimeNanos()
-        val dt = if (previousFrame == 0L) 0f else ((started - previousFrame) / 1e9f).coerceIn(0f, 0.05f)
+        val frameSeconds = if (previousFrame == 0L || previousFrame < resumedAtNs) 0.0 else (started - previousFrame) / 1e9
+        val dt = frameSeconds.toFloat().coerceIn(0f, 0.05f)
         previousFrame = started
         val following = crowd?.connected == true
         val presentationNs = maxOf(System.nanoTime(), expectedPresentationNs)
         val shared = if (following) crowd?.frame(presentationNs) else null
         val s = shared?.cue?.settings ?: settings
+        val targetFps = min(if (settings.batterySaver) 30 else settings.targetFps, displayHz.toInt().coerceAtLeast(1))
+        val scale = quality.sample(frameSeconds, targetFps, settings.adaptiveQuality, thermalStatus, s.paused)
+        val renderWidth = (viewportWidth * scale).toInt().coerceAtLeast(1)
+        val renderHeight = (viewportHeight * scale).toInt().coerceAtLeast(1)
+        qualityReport = RenderQualityReport(scale, renderWidth, renderHeight, thermalStatus, targetFps)
+        post?.begin(renderWidth, renderHeight)
         if (following && shared != null) {
             val seconds = (shared.time / 1000).toFloat()
             time = seconds * s.speed
@@ -243,6 +271,7 @@ class PrismRenderer(private val context: Context, private val onError: (String) 
         } else if (program != 0) {
             val motion = shared?.motion ?: beatMotion.update(AudioEngine.rhythm, AudioEngine.levels, System.nanoTime()/1e9, s)
             glUseProgram(program)
+            glUniform2f(uniforms.getValue("uResolution"), renderWidth.toFloat(), renderHeight.toFloat())
             glUniform1f(uniforms.getValue("uTime"), time)
             glUniform1f(uniforms.getValue("uRotation"), rotation)
             glUniform1f(uniforms.getValue("uColorPhase"), colorPhase)
@@ -288,12 +317,12 @@ class PrismRenderer(private val context: Context, private val onError: (String) 
             glUniform1i(uniforms.getValue("uEqSegments"), if (s.eqSegments) 1 else 0)
             glDrawArrays(GL_TRIANGLE_STRIP, 0, 4)
         } else { glClearColor(0.03f, 0.03f, 0.08f, 1f); glClear(GL_COLOR_BUFFER_BIT) }
+        post?.finish(if (following) PostEffects() else s.effects)
+        post?.present(viewportWidth, viewportHeight)
         recording?.let { target ->
             try {
                 target.draw(System.nanoTime()) { width, height ->
-                    glViewport(0, 0, width, height)
-                    glUniform2f(uniforms.getValue("uResolution"), width.toFloat(), height.toFloat())
-                    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4)
+                    post?.present(width, height)
                 }
             } catch (error: Exception) {
                 target.fail(error)
@@ -301,7 +330,6 @@ class PrismRenderer(private val context: Context, private val onError: (String) 
                 recording = null
             } finally {
                 glViewport(0, 0, viewportWidth, viewportHeight)
-                if (program != 0) glUniform2f(uniforms.getValue("uResolution"), viewportWidth.toFloat(), viewportHeight.toFloat())
             }
         }
         if (statsStart == 0L) statsStart = started
@@ -311,7 +339,7 @@ class PrismRenderer(private val context: Context, private val onError: (String) 
             crowd?.measuredFps = measuredFps
             statsStart = started; frameCounter = 0
         }
-        val frameMs = if (s.paused && recording == null) 100L else if (s.batterySaver) 33L else 16L
+        val frameMs = if (s.paused && recording == null) 100L else (1000L / targetFps)
         val elapsedMs = (SystemClock.elapsedRealtimeNanos() - started) / 1_000_000L
         if (!following && elapsedMs < frameMs) SystemClock.sleep(frameMs - elapsedMs)
     }

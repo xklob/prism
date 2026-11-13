@@ -52,15 +52,17 @@ fun TuningOverlay(
     songAssistant: SongAssistant, initialTab: String = "Geometry", tablet: Boolean = false,
     appSettings: Boolean = false, switchScope: () -> Unit = {},
     minimized: Boolean = false, onMinimize: () -> Unit = {},
-    timingMinimized: Boolean = false, onTimingMinimize: () -> Unit = {}
+    timingMinimized: Boolean = false, onTimingMinimize: () -> Unit = {},
+    performance: () -> RenderQualityReport = { RenderQualityReport() }
 ) {
-    val tabs = if (appSettings) listOf("Audio", "Song", "Display") else listOf(s.scene.shapeTab, "Color", s.scene.motionTab, "Beat")
+    val tabs = if (appSettings) listOf("Audio", "Song", "Effects", "Display") else listOf(s.scene.shapeTab, "Color", s.scene.motionTab, "Beat")
     var tab by rememberSaveable(appSettings, s.scene) { mutableStateOf(initialTab.takeIf { it in tabs } ?: tabs.first()) }
     val contentScroll = key(appSettings, s.scene, tab) { rememberScrollState() }
     var hidden by rememberSaveable { mutableStateOf(false) }
     var activeControl by remember { mutableStateOf<String?>(null) }
     var notice by remember { mutableStateOf("") }
     var measuredFps by remember { mutableFloatStateOf(0f) }
+    var qualityReport by remember { mutableStateOf(RenderQualityReport()) }
     var timing by remember { mutableStateOf(RhythmState()) }
     var timingNow by remember { mutableDoubleStateOf(0.0) }
     var inputEnergy by remember { mutableFloatStateOf(0f) }
@@ -69,7 +71,7 @@ fun TuningOverlay(
     var saved by remember(s.scene) { mutableStateOf(store.hasSavedLook(s.scene)) }
     val otherAlpha by animateFloatAsState(if (activeControl == null) 1f else 0f, tween(120), label = "Control visibility")
     LaunchedEffect(notice) { if (notice.isNotEmpty()) { delay(2200); notice = "" } }
-    LaunchedEffect(Unit) { while (true) { measuredFps = fps(); delay(1000) } }
+    LaunchedEffect(Unit) { while (true) { measuredFps = fps(); qualityReport = performance(); delay(1000) } }
     LaunchedEffect(status.running, tab, hidden) {
         if (!status.running) { timing = RhythmState(); inputEnergy = 0f }
         while (status.running && tab == "Audio" && !hidden) {
@@ -104,7 +106,7 @@ fun TuningOverlay(
             Row(Modifier.fillMaxWidth().alpha(otherAlpha), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text(if (appSettings) "prism // SETTINGS" else "${s.scene.title} // TUNE", style = ReadableText, fontSize = 15.sp, fontWeight = FontWeight.Medium)
-                    Text(if (appSettings) "INPUT · SONG · DISPLAY" else if (notice.isNotEmpty()) notice else if (s.paused) "PAUSED · CHANGES ARE LIVE" else "LIVE · ${measuredFps.roundToInt()} FPS", style = ReadableText, color = OverlayAccent, fontSize = 9.sp, letterSpacing = 1.sp)
+                    Text(if (appSettings) "INPUT · SONG · EFFECTS · DISPLAY" else if (notice.isNotEmpty()) notice else if (s.paused) "PAUSED · CHANGES ARE LIVE" else "LIVE · ${measuredFps.roundToInt()} FPS", style = ReadableText, color = OverlayAccent, fontSize = 9.sp, letterSpacing = 1.sp)
                 }
                 TextButton(onClick = { if (tablet) onMinimize() else hidden = true },
                     modifier = Modifier.semantics { contentDescription = if (tablet) "Minimize settings" else "Hide controls" }) {
@@ -131,7 +133,9 @@ fun TuningOverlay(
                         }
                         when (tab) {
                             "Song" -> SongControls(songAssistant, showManualTiming = !tablet)
+                            "Effects" -> EffectsControls(s, change, activeControl, ::editing)
                             "Display" -> {
+                                RenderQualityControls(s, qualityReport, change)
                                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                     Column(Modifier.weight(1f)) {
                                         Text("Battery saver", style = ReadableText, fontSize = 13.sp)
