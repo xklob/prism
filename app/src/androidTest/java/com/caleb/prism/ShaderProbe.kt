@@ -17,6 +17,7 @@ class ShaderProbe(context: Context, private val evidence: File, private val widt
     private val eglContext: android.opengl.EGLContext
     private val surface: android.opengl.EGLSurface
     private val program: Int
+    private val post by lazy { PostProcessor(context) }
 
     init {
         assertTrue(eglInitialize(display, IntArray(2), 0, IntArray(2), 1))
@@ -56,11 +57,14 @@ class ShaderProbe(context: Context, private val evidence: File, private val widt
 
     private fun render(scene: Scene, audio: MusicalMotion, time: Float = 4f,
                        spectrum: FloatArray = FloatArray(64), s: VisualSettings = VisualSettings.defaults(scene),
-                       fractalBands: FloatArray = FloatArray(3)): ByteArray {
+                       fractalBands: FloatArray = FloatArray(3), fx: PostEffects? = null, scale: Float = 1f): ByteArray {
+        val w = if (fx == null) width else (width * scale).toInt()
+        val h = if (fx == null) height else (height * scale).toInt()
+        if (fx != null) post.begin(w, h) else { glBindFramebuffer(GL_FRAMEBUFFER, 0); glViewport(0, 0, width, height) }
         glUseProgram(program)
         fun f(name: String, value: Float) = glUniform1f(glGetUniformLocation(program, name), value)
         fun i(name: String, value: Int) = glUniform1i(glGetUniformLocation(program, name), value)
-        glUniform2f(glGetUniformLocation(program, "uResolution"), width.toFloat(), height.toFloat())
+        glUniform2f(glGetUniformLocation(program, "uResolution"), w.toFloat(), h.toFloat())
         glUniform2f(glGetUniformLocation(program, "uTouch"), 0f, 0f)
         f("uTime", time); f("uRotation", 0.15f); f("uMorphTime", 2f); f("uColorPhase", 0.1f)
         f("uIntensity", s.intensity); f("uComplexity", s.complexity); f("uSymmetry", s.symmetry.toFloat())
@@ -77,6 +81,7 @@ class ShaderProbe(context: Context, private val evidence: File, private val widt
         i("uFractalShape", s.kaleidoscopeShape); f("uFractalSpace", s.kaleidoscopeSpace)
         glUniform3f(glGetUniformLocation(program,"uFractalBands"),fractalBands[0],fractalBands[1],fractalBands[2])
         glDrawArrays(GL_TRIANGLE_STRIP, 0, 4)
+        if (fx != null) { post.finish(fx); post.present(width, height) }
         val buffer = ByteBuffer.allocateDirect(width * height * 4)
         glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, buffer)
         assertEquals("Shader render must not generate GL errors", GL_NO_ERROR, glGetError())
@@ -103,6 +108,34 @@ class ShaderProbe(context: Context, private val evidence: File, private val widt
             save(result,"equalizer-$count-${if (radial) "radial" else "mirror"}.png")
         }
         assertArrayEquals("No signal restores the same empty spectrum",silence,render(scene,MusicalMotion()))
+    }
+
+    fun verifyPostProcessing() {
+        val spectrum = FloatArray(64) { .5f + .4f * kotlin.math.sin(it.toFloat()) }
+        fun brightness(bytes: ByteArray) = bytes.indices.filter { it % 4 != 3 }.sumOf { bytes[it].toInt() and 255 }.toDouble()
+        for (scene in Scene.entries) {
+            val original = render(scene, MusicalMotion(), spectrum = spectrum)
+            assertArrayEquals("${scene.title} bypass must preserve original pixels", original,
+                render(scene, MusicalMotion(), spectrum = spectrum, fx = PostEffects()))
+            assertArrayEquals("Zero strength must also bypass", original,
+                render(scene, MusicalMotion(), spectrum = spectrum, fx = PostEffects(enabled = true, strength = 0f)))
+            val glow = render(scene, MusicalMotion(), spectrum = spectrum,
+                fx = PostEffects(enabled = true, bloom = 1f, threshold = .25f))
+            assertTrue("${scene.title} bloom must add visible light", brightness(glow) > brightness(original) + width * height)
+            val soft = render(scene, MusicalMotion(), spectrum = spectrum,
+                fx = PostEffects(enabled = true, bloom = 0f, blur = 1f, blurRadius = .6f))
+            assertFalse("${scene.title} blur must affect pixels", original.contentEquals(soft))
+            save(glow, "effects-${scene.name}-bloom.png")
+            save(soft, "effects-${scene.name}-blur.png")
+        }
+        for (quality in 0..2) for (scale in listOf(.45f, .85f, 1f)) {
+            val pixels = render(Scene.KALEIDO, MusicalMotion(),
+                fx = PostEffects(enabled = true, bloom = .6f, blur = .3f, quality = quality), scale = scale)
+            assertTrue("Resized targets must remain visible", brightness(pixels) > width * height * 10)
+        }
+        val original = render(Scene.KALEIDO, MusicalMotion())
+        assertArrayEquals("Resizing and disabling effects must not leave stale buffers", original,
+            render(Scene.KALEIDO, MusicalMotion(), fx = PostEffects()))
     }
 
     fun verifyKaleidoscope() {
@@ -181,6 +214,7 @@ class ShaderProbe(context: Context, private val evidence: File, private val widt
     }
 
     override fun close() {
+        post.close()
         glDeleteProgram(program)
         eglMakeCurrent(display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT)
         eglDestroySurface(display, surface)

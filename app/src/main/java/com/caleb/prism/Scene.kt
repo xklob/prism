@@ -86,7 +86,10 @@ data class VisualSettings(
     val eqRadial: Boolean = false,
     val eqSegments: Boolean = true,
     val kaleidoscopeShape: Int = 0,
-    val kaleidoscopeSpace: Float = 1f
+    val kaleidoscopeSpace: Float = 1f,
+    val effects: PostEffects = PostEffects(),
+    val adaptiveQuality: Boolean = true,
+    val targetFps: Int = 60
 ) {
     fun randomLook(random: Random = Random.Default): VisualSettings {
         val variation = copy(
@@ -114,7 +117,7 @@ data class VisualSettings(
     }
     fun resetLook() = defaults(scene).copy(source = source, audioEnabled = audioEnabled, sensitivity = sensitivity,
         beatsPerBar = beatsPerBar, syncOffsetMs = syncOffsetMs, batterySaver = batterySaver, paused = paused,
-        tabletMonitor = tabletMonitor)
+        tabletMonitor = tabletMonitor, effects = effects, adaptiveQuality = adaptiveQuality, targetFps = targetFps)
 
     companion object {
         fun defaults(scene: Scene) = when (scene) {
@@ -147,6 +150,8 @@ class SettingsStore(context: Context) {
 
     private fun read(scene: Scene, source: AudioSource, prefix: String): VisualSettings {
         val d = VisualSettings.defaults(scene)
+        fun effect(key: String, fallback: Float, high: Float = 1f) = prefs.getFloat("effects.$key", fallback)
+            .let { if (it.isFinite()) it.coerceIn(0f, high) else fallback }
         fun f(key: String, fallback: Float, low: Float, high: Float): Float {
             // Preserve v1's palette, motion, and intensity when migrating an existing install.
             val legacy = if (key in listOf("speed", "intensity")) prefs.getFloat(key, fallback) else fallback
@@ -183,7 +188,12 @@ class SettingsStore(context: Context) {
             eqRadial = prefs.getBoolean(prefix + "eqRadial", d.eqRadial),
             eqSegments = prefs.getBoolean(prefix + "eqSegments", d.eqSegments),
             kaleidoscopeShape = prefs.getInt(prefix + "kaleidoscopeShape", d.kaleidoscopeShape).coerceIn(0, 2),
-            kaleidoscopeSpace = f("kaleidoscopeSpace", d.kaleidoscopeSpace, .4f, 2f)
+            kaleidoscopeSpace = f("kaleidoscopeSpace", d.kaleidoscopeSpace, .4f, 2f),
+            effects = PostEffects(prefs.getBoolean("effects.enabled", false), effect("strength", 1f),
+                effect("bloom", .35f, 2f), effect("bloomRadius", .5f), effect("threshold", .65f),
+                effect("blur", 0f), effect("blurRadius", .35f), prefs.getInt("effects.quality", 1).coerceIn(0, 2)),
+            adaptiveQuality = prefs.getBoolean("adaptiveQuality", true),
+            targetFps = prefs.getInt("targetFps", 60).takeIf { it in listOf(30, 60) } ?: 60
         )
     }
     fun save(s: VisualSettings) = write(s, "scene.${s.scene.name}.", shared = true)
@@ -209,6 +219,11 @@ class SettingsStore(context: Context) {
             .putFloat("sensitivity", s.sensitivity).putBoolean("batterySaver", s.batterySaver)
             .putInt("beatsPerBar", s.beatsPerBar).putFloat("syncOffsetMs", s.syncOffsetMs)
             .putBoolean("tabletMonitor", s.tabletMonitor)
+            .putBoolean("adaptiveQuality", s.adaptiveQuality).putInt("targetFps", s.targetFps)
+            .putBoolean("effects.enabled", s.effects.enabled).putInt("effects.quality", s.effects.quality)
+            .putFloat("effects.strength", s.effects.strength).putFloat("effects.bloom", s.effects.bloom)
+            .putFloat("effects.bloomRadius", s.effects.bloomRadius).putFloat("effects.threshold", s.effects.threshold)
+            .putFloat("effects.blur", s.effects.blur).putFloat("effects.blurRadius", s.effects.blurRadius)
         editor.apply()
     }
 }

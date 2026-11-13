@@ -1,5 +1,6 @@
 package com.caleb.prism
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.*
@@ -17,6 +18,7 @@ import kotlinx.coroutines.launch
 @Composable internal fun SettingHelp(label: String) {
     val description = settingHelp(label) ?: return
     val state = rememberTooltipState(isPersistent = true)
+    BackHandler(state.isVisible) { state.dismiss() }
     val scope = rememberCoroutineScope()
     TooltipBox(positionProvider = TooltipDefaults.rememberRichTooltipPositionProvider(), state = state,
         tooltip = {
@@ -107,7 +109,17 @@ internal fun settingHelp(label: String): String? = when (label) {
     "Input source" -> "Microphone follows sound around the device. System audio follows compatible apps, including headphone playback, after Android capture consent. Some players restrict capture; prism cannot infer their exact policy from silence."
     "Input gain" -> "Adjusts analysis sensitivity for quiet or loud input. It can make weak sound easier to follow, but can also emphasize noise. It never changes the original audio saved in a session recording."
     "Sync offset" -> "Moves visual timing relative to captured sound by up to 250 ms. Positive values advance the visual; negative values delay it. Use it to compensate for playback or Bluetooth latency."
-    "Battery saver" -> "Targets 30 fps and a maximum 1,080-pixel render edge to reduce GPU work. Audio analysis continues at its normal rate; recording has its own encoder settings."
+    "Global effects" -> "Adds bloom and blur after any local pattern is drawn. The same completed image goes to the screen and recordings; controls remain clear. Switch off to bypass every effect while retaining your settings. Crowd shows retain their controller's output."
+    "Effect strength" -> "Mixes the entire effect stack into the original image. Zero produces the untouched pattern. Bloom and blur keep their individual settings."
+    "Bloom" -> "Spreads light from bright parts of the pattern into nearby dark areas. Increase for glowing filaments and softer neon halos. Strong bloom can wash out highlights."
+    "Bloom radius" -> "Sets how far the glow spreads. A small radius keeps edges crisp; a large radius creates broad halos. It does not change the underlying geometry."
+    "Bloom threshold" -> "Chooses which colors produce a glow. High values keep bloom around the brightest highlights; low values let more of the image glow."
+    "Blur" -> "Blends a softened version of the whole pattern over the original. Zero stays sharp; 100% shows the fully blurred image. This also applies to recordings."
+    "Blur radius" -> "Controls how widely neighboring pixels are blended. Increase for softer shapes and a more abstract image; use Blur to control the mix."
+    "Effect quality" -> "Sets the resolution of the glow and blur passes. Economy uses the least GPU work; High keeps finer detail. Balanced is a good starting point. This setting is separate from the pattern's adaptive rendering resolution."
+    "Adaptive quality" -> "Lowers rendering resolution after sustained low frame rates or when Android reports heat, then restores it slowly after recovery. Pattern controls, animation speed, and audio timing stay unchanged. The recorded image follows the same quality. It aims for your target frame rate but cannot guarantee it."
+    "Target frame rate" -> "Chooses a 30 or 60 fps target. Adaptive quality uses it to balance sharpness and smoothness. The display's refresh rate and Battery saver can cap the target; recordings remain capped at 30 fps."
+    "Battery saver" -> "Targets 30 fps and a maximum 1,080-pixel render edge to reduce GPU work. Adaptive quality may reduce it further. Audio analysis continues at its normal rate; recording has its own encoder settings."
     "Tablet monitor" -> "Keeps song identity, input level, BPM, and beat/bar/phrase confidence at bottom left on tablet-sized windows, including fullscreen. It is excluded from session recordings."
     "Song assist" -> "Uses available playback metadata and optional identification to look up song duration and BPM with ReccoBeats. Titles or recording IDs are sent online. A matching BPM supports tempo confidence but cannot establish a bar or phrase origin."
     "Playback info access" -> "Allows prism's notification listener to read media-session metadata and control the active player's previous, play/pause, and next actions. prism does not read notification messages. Playback controls work without Song assist or audio capture. This permission does not grant audio capture or override a player's restrictions."

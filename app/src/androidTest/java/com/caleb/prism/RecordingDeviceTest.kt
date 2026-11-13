@@ -31,6 +31,8 @@ class RecordingDeviceTest {
         if (android.os.Build.VERSION.SDK_INT >= 33) instrumentation.uiAutomation.grantRuntimePermission(context.packageName, Manifest.permission.POST_NOTIFICATIONS)
         context.getSharedPreferences("prism", 0).edit().clear().commit()
         context.getSharedPreferences("recordings", 0).edit().clear().commit()
+        if (InstrumentationRegistry.getArguments().getString("effects") == "true")
+            SettingsStore(context).save(VisualSettings(effects = PostEffects(enabled = true, bloom = .65f, blur = .25f)))
         Configurator.getInstance().waitForIdleTimeout = 300
         device.wakeUp(); device.setOrientationNatural()
         activity = instrumentation.startActivitySync(Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as MainActivity
