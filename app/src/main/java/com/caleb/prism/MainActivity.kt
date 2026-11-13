@@ -22,10 +22,14 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.repeatOnLifecycle
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     private lateinit var store: SettingsStore
+    private lateinit var looks: LookLibrary
     private var settings by mutableStateOf(VisualSettings())
     private var renderError by mutableStateOf<String?>(null)
     private var connecting by mutableStateOf(false)
@@ -99,10 +103,21 @@ class MainActivity : ComponentActivity() {
             }
         }
         settings = store.load()
+        looks = LookLibrary(store, { settings }, ::applyLook)
         if (AudioEngine.status.value.running && AudioEngine.status.value.source == AudioSource.SYSTEM) {
             settings = settings.copy(source = AudioSource.SYSTEM, audioEnabled = true)
         }
         updateWakeLock()
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                while (true) {
+                    looks.tick(AudioEngine.timingSample, System.nanoTime() / 1e9,
+                        AudioEngine.status.value.running && !crowd.connected,
+                        AudioEngine.captureEpoch.toLong() + AudioEngine.songTimingRevision + AudioEngine.manualTimingRevision)
+                    delay(20)
+                }
+            }
+        }
         lifecycleScope.launch {
             AudioEngine.status.collect { status ->
                 if (status.running) prepareRecording()
@@ -127,7 +142,7 @@ class MainActivity : ComponentActivity() {
                 onRecord = ::startRecording,
                 onOpenRecording = { openRecording(it, false) },
                 onShareRecording = { openRecording(it, true) }, songAssistant = songAssistant,
-                crowd = crowd, crowdInvitation = crowdInvitation, onCrowdJoin = ::joinCrowd,
+                looks = looks, crowd = crowd, crowdInvitation = crowdInvitation, onCrowdJoin = ::joinCrowd,
                 onCrowdLeave = ::leaveCrowd, onCrowdBrightness = ::crowdBrightness
             )
         }
@@ -152,6 +167,7 @@ class MainActivity : ComponentActivity() {
                     return
                 }
             }
+            looks.cancel()
             crowd.join(text, automaticWifi)
             if (invite.source) changeSettings(settings.copy(audioEnabled = true, paused = false))
             else disconnectAudio()
@@ -186,6 +202,14 @@ class MainActivity : ComponentActivity() {
         store.save(resolved)
         surface?.update(resolved)
         updateWakeLock()
+    }
+
+    private fun applyLook(look: VisualSettings, seconds: Float) {
+        if (crowd.connected) return
+        store.save(settings)
+        settings = look.keepingSession(settings)
+        store.save(settings)
+        surface?.transitionTo(settings, seconds)
     }
 
     private fun requestAudioConnection() {

@@ -119,6 +119,12 @@ data class VisualSettings(
         beatsPerBar = beatsPerBar, syncOffsetMs = syncOffsetMs, batterySaver = batterySaver, paused = paused,
         tabletMonitor = tabletMonitor, effects = effects, adaptiveQuality = adaptiveQuality, targetFps = targetFps)
 
+    /** A look changes appearance without changing the connected input or musical clock. */
+    fun keepingSession(current: VisualSettings) = copy(source = current.source, audioEnabled = current.audioEnabled,
+        sensitivity = current.sensitivity, paused = current.paused, batterySaver = current.batterySaver,
+        beatsPerBar = current.beatsPerBar, syncOffsetMs = current.syncOffsetMs, tabletMonitor = current.tabletMonitor,
+        adaptiveQuality = current.adaptiveQuality, targetFps = current.targetFps)
+
     companion object {
         fun defaults(scene: Scene) = when (scene) {
             Scene.KALEIDO -> VisualSettings(scene = scene, complexity = 0.8f, symmetry = 12, distortion = 0.55f)
@@ -148,9 +154,9 @@ class SettingsStore(context: Context) {
     fun saveLook(s: VisualSettings) = write(s, "look.${s.scene.name}.", shared = false)
     fun loadLook(scene: Scene, source: AudioSource) = read(scene, source, "look.${scene.name}.")
 
-    private fun read(scene: Scene, source: AudioSource, prefix: String): VisualSettings {
+    private fun read(scene: Scene, source: AudioSource, prefix: String, effectsPrefix: String = ""): VisualSettings {
         val d = VisualSettings.defaults(scene)
-        fun effect(key: String, fallback: Float, high: Float = 1f) = prefs.getFloat("effects.$key", fallback)
+        fun effect(key: String, fallback: Float, high: Float = 1f) = prefs.getFloat("${effectsPrefix}effects.$key", fallback)
             .let { if (it.isFinite()) it.coerceIn(0f, high) else fallback }
         fun f(key: String, fallback: Float, low: Float, high: Float): Float {
             // Preserve v1's palette, motion, and intensity when migrating an existing install.
@@ -189,14 +195,48 @@ class SettingsStore(context: Context) {
             eqSegments = prefs.getBoolean(prefix + "eqSegments", d.eqSegments),
             kaleidoscopeShape = prefs.getInt(prefix + "kaleidoscopeShape", d.kaleidoscopeShape).coerceIn(0, 2),
             kaleidoscopeSpace = f("kaleidoscopeSpace", d.kaleidoscopeSpace, .4f, 2f),
-            effects = PostEffects(prefs.getBoolean("effects.enabled", false), effect("strength", 1f),
+            effects = PostEffects(prefs.getBoolean("${effectsPrefix}effects.enabled", false), effect("strength", 1f),
                 effect("bloom", .35f, 2f), effect("bloomRadius", .5f), effect("threshold", .65f),
-                effect("blur", 0f), effect("blurRadius", .35f), prefs.getInt("effects.quality", 1).coerceIn(0, 2)),
+                effect("blur", 0f), effect("blurRadius", .35f), prefs.getInt("${effectsPrefix}effects.quality", 1).coerceIn(0, 2)),
             adaptiveQuality = prefs.getBoolean("adaptiveQuality", true),
             targetFps = prefs.getInt("targetFps", 60).takeIf { it in listOf(30, 60) } ?: 60
         )
     }
     fun save(s: VisualSettings) = write(s, "scene.${s.scene.name}.", shared = true)
+    var transitionSeconds: Float
+        get() = prefs.getFloat("looks.transitionSeconds", 1.5f).let { if (it.isFinite()) it.coerceIn(0f, 8f) else 1.5f }
+        set(value) { prefs.edit().putFloat("looks.transitionSeconds", value.coerceIn(0f, 8f)).apply() }
+
+    fun presets(): List<LookPreset> = prefs.getString("looks.ids", "").orEmpty().split(',').filter { it.isNotEmpty() }.mapNotNull { id ->
+        val prefix = "preset.$id."
+        val scene = Scene.entries.firstOrNull { it.name == prefs.getString(prefix + "scene", "") } ?: return@mapNotNull null
+        LookPreset(id, prefs.getString(prefix + "name", scene.title).orEmpty(), prefs.getBoolean(prefix + "favorite", false),
+            read(scene, AudioSource.MICROPHONE, prefix, prefix))
+    }
+    fun savePreset(name: String, settings: VisualSettings): LookPreset {
+        val ids = presets().map { it.id }
+        require(ids.size < 32) { "Library full. Delete a look before saving another." }
+        val id = java.util.UUID.randomUUID().toString()
+        val prefix = "preset.$id."
+        write(settings, prefix, false)
+        prefs.edit().putString(prefix + "scene", settings.scene.name).putString(prefix + "name", lookName(name))
+            .putString("looks.ids", (ids + id).joinToString(",")).putEffects(prefix, settings.effects).apply()
+        return presets().first { it.id == id }
+    }
+    fun renamePreset(id: String, name: String) { prefs.edit().putString("preset.$id.name", lookName(name)).apply() }
+    fun favoritePreset(id: String, favorite: Boolean) { prefs.edit().putBoolean("preset.$id.favorite", favorite).apply() }
+    fun deletePreset(id: String) {
+        val ids = presets().map { it.id }.filter { it != id }
+        val editor = prefs.edit().putString("looks.ids", ids.joinToString(","))
+        prefs.all.keys.filter { it.startsWith("preset.$id.") }.forEach(editor::remove)
+        editor.apply()
+    }
+    private fun lookName(name: String) = name.trim().take(40).also { require(it.isNotBlank()) { "Give this look a name." } }
+    private fun android.content.SharedPreferences.Editor.putEffects(prefix: String, fx: PostEffects) =
+        putBoolean(prefix + "effects.enabled", fx.enabled).putInt(prefix + "effects.quality", fx.quality)
+            .putFloat(prefix + "effects.strength", fx.strength).putFloat(prefix + "effects.bloom", fx.bloom)
+            .putFloat(prefix + "effects.bloomRadius", fx.bloomRadius).putFloat(prefix + "effects.threshold", fx.threshold)
+            .putFloat(prefix + "effects.blur", fx.blur).putFloat(prefix + "effects.blurRadius", fx.blurRadius)
     private fun write(s: VisualSettings, prefix: String, shared: Boolean) {
         val editor = prefs.edit().putBoolean(prefix + "saved", true).putInt(prefix + "palette", s.palette.ordinal)
             .putInt(prefix + "symmetry", s.symmetry).putInt(prefix + "eqBuckets", s.eqBuckets)

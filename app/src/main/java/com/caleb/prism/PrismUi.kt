@@ -51,7 +51,7 @@ fun PrismApp(
     onConnect: () -> Unit, onDisconnect: () -> Unit, onImmersive: (Boolean) -> Unit,
     recording: SessionRecorder, onRecord: () -> Unit,
     onOpenRecording: (SavedRecording) -> Unit, onShareRecording: (SavedRecording) -> Unit,
-    songAssistant: SongAssistant, crowd: CrowdClient, crowdInvitation: String,
+    songAssistant: SongAssistant, looks: LookLibrary, crowd: CrowdClient, crowdInvitation: String,
     onCrowdJoin: (String, Boolean) -> Unit, onCrowdLeave: () -> Unit, onCrowdBrightness: (Float) -> Unit
 ) {
     var fullscreen by rememberSaveable { mutableStateOf(false) }
@@ -196,7 +196,7 @@ fun PrismApp(
                 appSettings = appSettings, switchScope = { appSettings = !appSettings; tuningTab = if (appSettings) "Audio" else settings.scene.shapeTab },
                 minimized = settingsMinimized, onMinimize = { settingsMinimized = !settingsMinimized },
                 timingMinimized = timingMinimized, onTimingMinimize = { timingMinimized = !timingMinimized },
-                performance = { surface?.engine?.qualityReport ?: RenderQualityReport() }
+                performance = { surface?.engine?.qualityReport ?: RenderQualityReport() }, looks = looks
             )
             if (tablet && settings.tabletMonitor && !crowdOpen) TabletMonitor(songAssistant,
                 Modifier.align(Alignment.BottomStart).safeDrawingPadding().padding(16.dp).width(300.dp))

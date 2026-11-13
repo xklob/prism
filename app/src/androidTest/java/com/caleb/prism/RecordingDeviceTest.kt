@@ -134,6 +134,7 @@ class RecordingDeviceTest {
             assertFalse("Ambient visuals can retain the active recording input", SettingsStore(context).load().audioEnabled)
             assertEquals(2, AudioEngine.status.value.channels)
             SystemClock.sleep(2500)
+            assertTrue("Capture populates the timing history", AudioEngine.diagnostics.snapshot().isNotEmpty())
             val label = device.findObject(By.text("Immerse"))!!.visibleBounds
             val screen = instrumentation.uiAutomation.takeScreenshot()
             try {
@@ -207,6 +208,17 @@ class RecordingDeviceTest {
         assertEquals(sinks, AudioEngine.pcmSinkCount)
         click("Tune")
         assertTrue(device.hasObject(By.desc("Stop recording")))
+        if (InstrumentationRegistry.getArguments().getString("looks") == "true") {
+            val field = MainActivity::class.java.getDeclaredField("looks").apply { isAccessible = true }
+            val library = field.get(activity) as LookLibrary
+            val look = SettingsStore(context).savePreset("Recording look", VisualSettings.defaults(Scene.KALEIDOSCOPE)
+                .copy(effects = PostEffects(enabled = true, bloom = .5f)))
+            instrumentation.runOnMainSync { library.duration(1.5f); library.applyNow(look) }
+            SystemClock.sleep(450)
+            // Interrupt a live crossfade while the encoder is receiving frames.
+            val second = SettingsStore(context).savePreset("Interrupted look", VisualSettings.defaults(Scene.WORMHOLE))
+            instrumentation.runOnMainSync { library.applyNow(second) }
+        }
         SystemClock.sleep(2500)
         device.takeScreenshot(File(evidence, "silent-recording-tuning.png"))
         click("Stop recording")
