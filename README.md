@@ -2,11 +2,30 @@
 
 A native Android psychedelic visualizer. Kotlin, Jetpack Compose, and six original OpenGL ES 3 patterns. Android 10 or newer.
 
-The [1.9 tablet preview](https://github.com/xklob/prism/releases/tag/v1.9.0-preview.1) adds the tablet settings panel and monitor, improved rhythm continuity, Mandelbrot zoom, and Equalizer.
+[Download Prism 1.9.0](https://github.com/xklob/prism/releases/tag/v1.9.0) for tablet settings and monitoring, improved rhythm continuity, Mandelbrot zoom, and Equalizer.
+
+## Screenshots
+
+Phone portrait: pattern selection and the compact settings panel.
+
+<p>
+  <img src="docs/screenshots/phone-patterns.png" width="270" alt="Prism on a phone in portrait, showing the Kaleido pattern and scene controls">
+  <img src="docs/screenshots/phone-settings.png" width="270" alt="Phone settings in a semi-transparent panel over the Kaleido pattern">
+</p>
+
+Tablet landscape: Mandelbrot settings alongside the persistent monitor.
+
+![Mandelbrot on a landscape tablet with settings on the right and the song and timing monitor at bottom left](docs/screenshots/tablet-settings.png)
+
+Manual timing controls and the beat/bar/phrase monitor remain separate from recording and scene controls.
+
+![Landscape tablet showing manual timing at left, live beat and bar confidence at bottom left, and scene controls at right](docs/screenshots/tablet-timing.png)
+
+These are unedited Android 16 emulator captures of the 1.9 UI, at phone and tablet window sizes. The live timing view uses an original synthetic music fixture. On-screen FPS reflects the emulator, not physical-device performance.
 
 ## Crowd mode
 
-The [**1.8.0 release**](https://github.com/xklob/prism/releases/tag/v1.8.0) adds a Windows controller that uses the computer's own Wi-Fi card through Mobile Hotspot. Install the APK on the phones, extract the Windows controller ZIP, and double-click **Start-Prism.cmd**. The local dashboard provides audience invitations, a shared tempo and bar clock, four geometric patterns, scheduled flashes and color inversion, and per-phone timing diagnostics. The 1.9 preview controller also includes Mandelbrot.
+Prism includes a Windows controller that uses the computer's own Wi-Fi card through Mobile Hotspot. Install the APK on the phones, extract the Windows controller ZIP from the [release](https://github.com/xklob/prism/releases/tag/v1.9.0), and double-click **Start-Prism.cmd**. The local dashboard provides audience invitations, a shared tempo and bar clock, five geometric patterns, scheduled flashes and color inversion, and per-phone timing diagnostics.
 
 See [the controller guide](controller/README.md) for setup, audio input, timing limits, and testing. Physical multi-phone timing and the laptop's adapter and firewall setup still need field testing. Software clock estimates do not establish physical synchronization between different phone screens.
 
@@ -128,6 +147,8 @@ The debug APK is in `app/build/outputs/apk/debug/` and uses package `com.caleb.p
 ## Verification
 
 The 1.9 preview passed 80 Android unit tests, nine controller tests, seven native Windows package tests, release build/lint, and focused Android 16 emulator checks at tablet and phone window sizes. The signed release was exercised through captured music, beat/bar lock, manual corrections, automatic handoff, video recording/opening, silence, capture stop, and cold restart. Tablet layout and persistence, shader output, drumless bridges, and playback-metadata lookup were also checked. Physical Pixel Tablet frame rate, thermals, room acoustics, and crowd synchronization still need field testing. This is a focused validation run, not a claim that the complete device-test suite passed.
+
+Stable 1.9.0 keeps that implementation and adds release metadata and the README gallery. Its rebuilt APK passed release lint and signature verification, and was installed over the preview with existing preferences intact. Phone portrait and tablet landscape captures above were inspected in the running app; the live timing capture comes from the preview's signed-release recording check.
 
 Unit tests check the exact audio frontend, resampling, tempo/phase/meter tracking, missing beats, weak offbeat hits, detector conflicts, ambiguous bar evidence, tempo and phase changes, quieter sections, confidence decay, silence, manual corrections, monitor states, and beat/bar envelopes. Downbeat tests cover 3- and 4-beat bars at 30/60/120 fps, flash and fade duration, phase jumps, duplicate crossings, pause, and independent effect controls. Learned activations from original musical fixtures cover 96, 128, and 174 BPM. One syncopated 3/4 fixture intentionally checks manual correction of an ambiguous first beat; automatic bar alignment is not assumed to be infallible.
 

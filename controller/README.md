@@ -4,7 +4,7 @@ Run a small crowd show using a Windows laptop's Wi-Fi card. The controller start
 
 ## Start a show
 
-1. Install the **Prism 1.8.0 APK** on each Android phone.
+1. Install the **Prism 1.9.0 APK** on each Android phone.
 2. Extract the complete **Windows x64 controller ZIP** into a folder you can write to. Double-click **Start-Prism.cmd**.
 3. Windows requests administrator access to allow the controller's UDP port through its firewall. The launcher preserves your existing hotspot name and password and turns the hotspot on.
 4. Scan the dashboard's **Audience** invitation with the phone's camera and open Prism. Tap **Join show**. Android can ask to connect to the hotspot for this app. Alternatively, join the hotspot in Android Settings, paste the invitation into **Join crowd show**, and turn off **Ask Android to join the hotspot**.

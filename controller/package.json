@@ -1,6 +1,6 @@
 {
   "name": "prism-crowd-controller",
-  "version": "0.2.0-preview.1",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "engines": { "node": ">=24" },
