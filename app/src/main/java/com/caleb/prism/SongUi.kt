@@ -113,7 +113,7 @@ private val SongAccent = Color(0xFFD9C6FF)
             if (state.options.hasKey) TextButton(onClick = { keyError = assistant.saveToken("") }) { Text("Remove key", style = SongText) }
         }
         keyError?.let { Text(it, style = SongText, color = Color(0xFFFFD38C), fontSize = 11.sp) }
-        TextButton(onClick = assistant::identifyNow, enabled = capture.running && state.options.enabled && state.options.recognition && state.options.hasKey && !state.busy) {
+        TextButton(onClick = assistant::identifyNow, enabled = capture.source != AudioSource.LOCAL && capture.running && state.options.enabled && state.options.recognition && state.options.hasKey && !state.busy) {
             Text("Identify now", color = if (capture.running && state.options.recognition) SongAccent else SongMuted)
         }
         if (state.options.recognition) Text("${state.requestsRemaining} requests left in the current hourly limit", style = SongText, color = SongMuted, fontSize = 10.sp)
@@ -127,7 +127,7 @@ private val SongAccent = Color(0xFFD9C6FF)
                 { assistant.setOptions(state.options.copy(phraseBars = bars)) }, label = { Text("$bars bars") }) }
         }
         PhraseMonitor(phrase)
-        if (showManualTiming) Column {
+        if (showManualTiming && capture.source != AudioSource.LOCAL) Column {
             TimingAction("Phrase starts here", AudioEngine::alignPhrase, capture.running && timing.locked, Modifier.fillMaxWidth())
             TimingAction("Auto phrase", AudioEngine::automaticPhrase, capture.running, Modifier.fillMaxWidth())
         }

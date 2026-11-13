@@ -55,7 +55,7 @@ fun TuningOverlay(
     minimized: Boolean = false, onMinimize: () -> Unit = {},
     timingMinimized: Boolean = false, onTimingMinimize: () -> Unit = {},
     performance: () -> RenderQualityReport = { RenderQualityReport() }, looks: LookLibrary,
-    topControlsHeight: Dp = 100.dp
+    topControlsHeight: Dp = 100.dp, bottomInset: Dp = 0.dp, chooseFile: () -> Unit = connect
 ) {
     val tabs = if (appSettings) listOf("Audio", "Song", "Effects", "Display", "Diagnostics") else listOf(s.scene.shapeTab, "Color", s.scene.motionTab, "Beat", "Looks")
     var tab by rememberSaveable(appSettings) { mutableStateOf(initialTab.takeIf { it in tabs } ?: tabs.first()) }
@@ -84,13 +84,13 @@ fun TuningOverlay(
             delay(50)
         }
     }
-    BoxWithConstraints(Modifier.fillMaxSize().safeDrawingPadding().imePadding().padding(16.dp)) {
+    BoxWithConstraints(Modifier.fillMaxSize().safeDrawingPadding().imePadding().padding(bottom = bottomInset).padding(16.dp)) {
         val sidePanel = maxWidth >= 600.dp
         val compactHeight = maxHeight < 480.dp
         val controlsWidth = if (sidePanel) Modifier.width((maxWidth * .46f).coerceIn(360.dp, 480.dp)) else Modifier.fillMaxWidth()
         val availableHeight = (maxHeight - topControlsHeight - 12.dp).coerceAtLeast(120.dp)
         val controlsHeight = if (sidePanel || maxHeight < 480.dp) availableHeight else minOf(availableHeight, maxHeight * .68f)
-        if (tablet && s.audioEnabled) TimingSidebar(s, status.running, change,
+        if (tablet && s.audioEnabled && s.source != AudioSource.LOCAL) TimingSidebar(s, status.running, change,
             Modifier.align(Alignment.TopStart).padding(top = topControlsHeight + 12.dp).width(if (timingMinimized) 56.dp else 300.dp)
                 .heightIn(max=(maxHeight-topControlsHeight-232.dp).coerceAtLeast(120.dp)).alpha(otherAlpha), timingMinimized, onTimingMinimize)
         if (tablet && minimized) {
@@ -200,14 +200,15 @@ fun TuningOverlay(
                                         }
                                     }
                                     SettingHelp("Input source")
-                                    TextButton(onClick = if (status.running) disconnect else connect, enabled = s.audioEnabled && !connecting && !captureLocked, contentPadding = PaddingValues(4.dp)) {
+                                    if (s.source != AudioSource.LOCAL) TextButton(onClick = if (status.running) disconnect else connect, enabled = s.audioEnabled && !connecting && !captureLocked && s.source != AudioSource.LOCAL, contentPadding = PaddingValues(4.dp)) {
                                         Text(if (connecting) "Wait…" else if (status.running) "Stop" else "Connect", style = ReadableText, fontSize = 11.sp)
                                     }
                                 }
+                                if (s.source == AudioSource.LOCAL) LocalFileSettings(chooseFile, captureLocked)
                                 if (s.source == AudioSource.SYSTEM) SpotifyRelayControls(captureLocked || connecting || status.running)
                                 Column(Modifier.alpha(otherAlpha)) {
                                     RhythmMonitor(status.running, timing, timingNow, inputEnergy)
-                                    if (!tablet) TimingControls(s, status.running, timing, change)
+                                    if (!tablet && s.source != AudioSource.LOCAL) TimingControls(s, status.running, timing, change)
                                 }
                                 if (status.message != null) Text(status.message, style = ReadableText, fontSize = 10.sp, modifier = Modifier.alpha(otherAlpha))
                                 slider("Sync offset", s.syncOffsetMs, -250f..250f, "%+.0f ms".format(s.syncOffsetMs)) { change(s.copy(syncOffsetMs = it)) }

@@ -61,7 +61,34 @@ object AudioEngine {
     private const val SAMPLE_RATE = 48000
     private const val BLOCK = 960
     private val pcmSinks = CopyOnWriteArrayList<PcmSink>()
-    fun addPcmSink(sink: PcmSink) { pcmSinks.addIfAbsent(sink) }
+    private val localPcm = ArrayDeque<Pair<ShortArray, Long>>()
+    fun addPcmSink(sink: PcmSink) = synchronized(localPcm) {
+        if (pcmSinks.addIfAbsent(sink) && status.value.source == AudioSource.LOCAL)
+            localPcm.forEach { (samples, time) -> sink.accept(samples, time) }
+    }
+    @Synchronized internal fun startLocal(channels: Int): Int {
+        stop(); diagnostics.clear(); timingSample = TimingSample()
+        mutableStatus.value = CaptureStatus(true, AudioSource.LOCAL, channels = channels)
+        return generation
+    }
+    internal fun publishLocal(timing: LocalTiming, frame: LocalFrame, now: Double, epoch: Int) {
+        if (generation != epoch || status.value.source != AudioSource.LOCAL) return
+        val r = timing.rhythm
+        fun clock(time: Double) = if (time.isFinite()) now + time - r.timestamp else time
+        rhythm = r.copy(timestamp = now, signalPresent = r.signalPresent || frame.rms > .0012f, lastBeatTime = clock(r.lastBeatTime), lastMatchedBeatTime = clock(r.lastMatchedBeatTime))
+        phrase = timing.phrase
+        val gain = sensitivity / 1.4f
+        levels = AudioLevels((frame.bass * gain).coerceIn(0f, 1f), (frame.mid * gain).coerceIn(0f, 1f),
+            (frame.high * gain).coerceIn(0f, 1f), (frame.energy * gain).coerceIn(0f, 1f))
+        inputRms = frame.rms
+        timingSample = TimingSample(rhythm, phrase, levels.energy); diagnostics.add(timingSample)
+    }
+    internal fun publishLocalPcm(samples: ShortArray, firstSampleNs: Long, epoch: Int) = synchronized(localPcm) {
+        if (generation != epoch || status.value.source != AudioSource.LOCAL) return@synchronized
+        localPcm.addLast(samples.copyOf() to firstSampleNs)
+        while (localPcm.size > 16) localPcm.removeFirst()
+        pcmSinks.forEach { it.accept(samples, firstSampleNs) }
+    }
     fun removePcmSink(sink: PcmSink) { pcmSinks.remove(sink) }
     internal val pcmSinkCount get() = pcmSinks.size
 
@@ -249,6 +276,7 @@ object AudioEngine {
         phrase = PhraseState(bars = phraseBars)
         inferenceMs = 0f
         commands.clear()
+        synchronized(localPcm) { localPcm.clear() }
         mutableStatus.value = CaptureStatus(message = message)
     }
 }

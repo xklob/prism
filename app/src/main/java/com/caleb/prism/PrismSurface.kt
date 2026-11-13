@@ -153,6 +153,7 @@ class PrismRenderer(private val context: Context, private val onError: (String) 
     internal class Layer(var settings: VisualSettings) {
         var time = 0f; var rotation = 0f; var colorPhase = 0f; var morphTime = 0f
         val beatMotion = BeatMotion()
+        var audioEpoch = -1
         val fractalBands = FloatArray(3)
         fun next(settings: VisualSettings) = Layer(settings).also {
             it.time = time; it.rotation = rotation; it.colorPhase = colorPhase; it.morphTime = morphTime
@@ -337,6 +338,7 @@ class PrismRenderer(private val context: Context, private val onError: (String) 
             layer.colorPhase += dt * s.colorSpeed; layer.morphTime += dt * s.morph
         }
         if (program == 0) { glClearColor(.03f, .03f, .08f, 1f); glClear(GL_COLOR_BUFFER_BIT); return }
+            if (layer.audioEpoch != AudioEngine.captureEpoch) { layer.beatMotion.reset(); layer.audioEpoch = AudioEngine.captureEpoch }
             val motion = shared?.motion ?: layer.beatMotion.update(AudioEngine.rhythm, AudioEngine.levels, System.nanoTime()/1e9, s)
             glUseProgram(program)
             glUniform2f(uniforms.getValue("uResolution"), renderWidth.toFloat(), renderHeight.toFloat())

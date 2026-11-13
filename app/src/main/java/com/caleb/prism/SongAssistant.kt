@@ -24,7 +24,7 @@ class SongAssistant(context: Context) : AutoCloseable {
     val state = mutableState.asStateFlow()
     private val buffer = RecognitionBuffer()
     private val sink = PcmSink { samples, time ->
-        if (state.value.options.enabled && state.value.options.recognition && state.value.options.hasKey)
+        if (AudioEngine.status.value.source != AudioSource.LOCAL && state.value.options.enabled && state.value.options.recognition && state.value.options.hasKey)
             buffer.append(samples, time, AudioEngine.status.value.channels)
     }
     private var capture = CaptureStatus()
@@ -93,6 +93,12 @@ class SongAssistant(context: Context) : AutoCloseable {
         mutableState.value = state.value.copy(notificationAccess = access, requestsRemaining = budget.remaining(System.currentTimeMillis() / 1000.0))
         if (status.running != capture.running || status.source != capture.source) {
             capture = status; invalidate(); playback = null; buffer.clear(); nextRecognition = now
+        }
+        if (status.source == AudioSource.LOCAL || LocalAudio.state.value.analyzing) {
+            work?.cancel(); work = null; buffer.clear(); AudioEngine.tempoHint = null
+            mutableState.value = state.value.copy(song = null, catalog = null, busy = false,
+                message = "Local file // analyzed on device", matchLabel = "", positionMs = null)
+            return
         }
         if (!state.value.options.enabled || !status.running) {
             AudioEngine.tempoHint = null
@@ -182,6 +188,7 @@ class SongAssistant(context: Context) : AutoCloseable {
     }
 
     private fun identify(now: Double, manual: Boolean = false) {
+        if (AudioEngine.status.value.source == AudioSource.LOCAL || LocalAudio.state.value.analyzing) return
         val options = state.value.options
         if (!options.enabled || !options.recognition || !options.hasKey || keyRejected && !manual || !capture.running || work?.isActive == true) return
         val clip = buffer.clip((now * 1e9).toLong())

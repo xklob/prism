@@ -94,15 +94,18 @@ class SpotifyRelayDeviceTest {
                 waitFor("Source restarts at $rate Hz with policy $policy") { AudioEngine.inputRms > .02f || !SpotifyRelay.healthy() }
                 assertTrue("Relay remains healthy across source restart: ${AudioEngine.status.value}",SpotifyRelay.healthy())
                 SystemClock.sleep(400)
-                val rms=AudioEngine.inputRms
-                measurements.append("source_hz=$rate policy=$policy captured_rms=$rms\n")
+                // AudioTrack may be recreated while Android moves the producer between mixes.
+                // Measure the settled level over many analysis blocks, rather than one transition block.
+                val readings = FloatArray(20) { SystemClock.sleep(50); AudioEngine.inputRms }
+                val rms = readings.sorted()[readings.size / 2]
+                measurements.append("source_hz=$rate policy=$policy median_rms=$rms min=${readings.minOrNull()} max=${readings.maxOrNull()}\n")
                 File(evidence,"shizuku-policy-measurements.txt").writeText(measurements.toString())
                 // The input meter measures the mono analysis mix of two different tones.
                 assertEquals("No duplicated source or missing audio",.1526f,rms,.02f)
                 assertTrue(SpotifyRelay.healthy())
             }
             File(evidence,"shizuku-policy-measurements.txt").writeText(measurements.toString())
-            requireNotNull(device.findObject(By.desc("Record session"))).click()
+            refresh(); requireNotNull(device.findObject(By.desc("Record session"))).click()
             waitFor("Recording starts with relay audio") { refresh(); device.hasObject(By.desc("Stop recording")) }
             SystemClock.sleep(5000)
             device.takeScreenshot(File(evidence,"spotify-relay-recording.png"))

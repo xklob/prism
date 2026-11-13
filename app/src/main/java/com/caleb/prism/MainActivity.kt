@@ -46,6 +46,13 @@ class MainActivity : ComponentActivity() {
 
     private fun wantsAudio() = (!crowd.connected || crowd.source) && ((settings.audioEnabled && !settings.paused) || recording.state.value.busy)
 
+    private val audioFile = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null && !recording.state.value.busy) {
+            changeSettings(settings.copy(source = AudioSource.LOCAL, audioEnabled = true, paused = false))
+            LocalAudio.load(uri)
+        }
+    }
+
     private val wifiPermission = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { results ->
         val granted = results[if (Build.VERSION.SDK_INT >= 33) Manifest.permission.NEARBY_WIFI_DEVICES else Manifest.permission.ACCESS_FINE_LOCATION] == true
         val pending = pendingCrowdJoin
@@ -89,6 +96,7 @@ class MainActivity : ComponentActivity() {
             navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT)
         )
         SpotifyRelay.init(this)
+        LocalAudio.init(this)
         store = SettingsStore(this)
         crowd = CrowdClient(this)
         if (intent.data?.scheme == "prism" && intent.data?.host == "crowd") crowdInvitation = intent.dataString.orEmpty()
@@ -97,7 +105,7 @@ class MainActivity : ComponentActivity() {
             if (!isDestroyed) {
                 unlockedOrientation?.let { requestedOrientation = it }
                 unlockedOrientation = null
-                if (!settings.audioEnabled || settings.paused || (!foreground && settings.source == AudioSource.MICROPHONE)) {
+                if (settings.source != AudioSource.LOCAL && (!settings.audioEnabled || settings.paused || (!foreground && settings.source == AudioSource.MICROPHONE))) {
                     disconnectAudio()
                     resumeMicrophone = !foreground && settings.audioEnabled && !settings.paused && settings.source == AudioSource.MICROPHONE
                 }
@@ -105,10 +113,13 @@ class MainActivity : ComponentActivity() {
             }
         }
         settings = store.load()
+        AudioEngine.sensitivity = settings.sensitivity
+        AudioEngine.beatsPerBar = settings.beatsPerBar
         looks = LookLibrary(store, { settings }, ::applyLook)
-        if (AudioEngine.status.value.running && AudioEngine.status.value.source == AudioSource.SYSTEM) {
-            settings = settings.copy(source = AudioSource.SYSTEM, audioEnabled = true)
+        if (AudioEngine.status.value.running && AudioEngine.status.value.source in listOf(AudioSource.SYSTEM, AudioSource.LOCAL)) {
+            settings = settings.copy(source = AudioEngine.status.value.source!!, audioEnabled = true)
         }
+        lifecycleScope.launch { recording.state.collect { LocalAudio.recordingLocked = it.busy } }
         updateWakeLock()
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
@@ -138,6 +149,7 @@ class MainActivity : ComponentActivity() {
                 },
                 onChange = ::changeSettings,
                 onConnect = ::requestAudioConnection,
+                onChooseFile = ::chooseAudioFile,
                 onDisconnect = ::disconnectAudio,
                 onImmersive = ::updateImmersive,
                 recording = recording,
@@ -197,7 +209,9 @@ class MainActivity : ComponentActivity() {
             store.loadScene(next.scene, next.source).copy(paused = next.paused)
         } else next
         // Resolve the destination's saved audio toggle before deciding whether to retain capture.
-        if (!recording.state.value.busy && (!resolved.audioEnabled || resolved.source != settings.source || resolved.paused)) disconnectAudio()
+        if (!recording.state.value.busy && (resolved.source != settings.source ||
+            (resolved.source != AudioSource.LOCAL && (!resolved.audioEnabled || resolved.paused)))) disconnectAudio()
+        if (resolved.source != settings.source && settings.source == AudioSource.LOCAL) LocalAudio.cancelAnalysis()
         settings = resolved
         AudioEngine.sensitivity = resolved.sensitivity
         AudioEngine.beatsPerBar = resolved.beatsPerBar
@@ -214,7 +228,14 @@ class MainActivity : ComponentActivity() {
         surface?.transitionTo(settings, seconds)
     }
 
+    private fun chooseAudioFile() {
+        if (recording.state.value.busy || crowd.connected) return
+        disconnectAudio()
+        audioFile.launch(arrayOf("audio/*"))
+    }
+
     private fun requestAudioConnection() {
+        if (settings.source == AudioSource.LOCAL) { chooseAudioFile(); return }
         if (connecting || recording.state.value.busy || !settings.audioEnabled || (crowd.connected && !crowd.source)) return
         if (AudioEngine.status.value.running && AudioEngine.status.value.source == settings.source) return
         val source = settings.source
@@ -233,6 +254,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun connectAudio() {
+        if (settings.source == AudioSource.LOCAL) { LocalAudio.play(); return }
         if (crowd.connected && !crowd.source) return
         if (recording.state.value.busy) return
         if (connecting || (!settings.audioEnabled && !recording.state.value.busy)) return
@@ -284,6 +306,8 @@ class MainActivity : ComponentActivity() {
     private fun disconnectAudio() {
         connecting = false
         resumeMicrophone = false
+        LocalAudio.pause()
+        stopService(Intent(this, LocalAudioService::class.java))
         SpotifyRelay.stop()
         AudioEngine.stop()
         stopService(Intent(this, PlaybackCaptureService::class.java))
@@ -366,7 +390,7 @@ class MainActivity : ComponentActivity() {
         crowd.close()
         songAssistant.close()
         recording.stop()
-        if (isFinishing) disconnectAudio()
+        if (isFinishing) { disconnectAudio(); LocalAudio.cancelAnalysis() }
         surface = null
         super.onDestroy()
     }

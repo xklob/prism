@@ -11,6 +11,7 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-feature android:glEsVersion="0x00030000" android:required="true" />
     <uses-feature android:name="android.hardware.microphone" android:required="false" />
@@ -40,6 +41,7 @@
                 <data android:scheme="prism" android:host="crowd" />
             </intent-filter>
         </activity>
+        <service android:name=".LocalAudioService" android:exported="false" android:foregroundServiceType="mediaPlayback" android:stopWithTask="true" />
         <service android:name=".PlaybackCaptureService" android:exported="false"
             android:foregroundServiceType="mediaProjection" android:stopWithTask="true" />
         <service android:name=".NowPlayingListener" android:label="prism playback controls"

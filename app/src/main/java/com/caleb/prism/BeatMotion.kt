@@ -15,6 +15,7 @@ class BeatMotion {
     private var previousOffset=0
     private var effectAt=Double.NEGATIVE_INFINITY
     private var lastFlashAt=Double.NEGATIVE_INFINITY
+    fun reset() { clearEffects(); motion = MusicalMotion(); lastFlashAt = Double.NEGATIVE_INFINITY }
     private fun clearEffects() { previousPosition=Double.NaN; effectAt=Double.NEGATIVE_INFINITY }
     private fun pulse(phase: Double, cycle: Double, length: Double, bpm: Float): Double {
         // Use the known grid to ease into an accent over the last 45 ms, landing exactly

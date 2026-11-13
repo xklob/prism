@@ -53,7 +53,7 @@ private val Mint = Color(0xFF82E8CF)
 fun PrismApp(
     settings: VisualSettings, renderError: String?, connecting: Boolean,
     createSurface: () -> PrismSurface, onChange: (VisualSettings) -> Unit,
-    onConnect: () -> Unit, onDisconnect: () -> Unit, onImmersive: (Boolean) -> Unit,
+    onConnect: () -> Unit, onDisconnect: () -> Unit, onChooseFile: () -> Unit, onImmersive: (Boolean) -> Unit,
     recording: SessionRecorder, onRecord: () -> Unit,
     onOpenRecording: (SavedRecording) -> Unit, onShareRecording: (SavedRecording) -> Unit,
     songAssistant: SongAssistant, looks: LookLibrary, crowd: CrowdClient, crowdInvitation: String,
@@ -78,6 +78,8 @@ fun PrismApp(
     val recordingState by recording.state.collectAsStateWithLifecycle()
     val crowdStatus by crowd.status.collectAsStateWithLifecycle()
     val songState by songAssistant.state.collectAsStateWithLifecycle()
+    val fileState by LocalAudio.state.collectAsStateWithLifecycle()
+    var waveformHeight by remember { mutableStateOf(120.dp) }
     LaunchedEffect(fullscreen) { onImmersive(fullscreen) }
     LaunchedEffect(crowdInvitation) { if (crowdInvitation.isNotBlank()) { crowdOpen = true; fullscreen = false; tuning = false } }
     BackHandler(fullscreen || tuning || crowdOpen) {
@@ -88,6 +90,9 @@ fun PrismApp(
             val landscape = maxWidth > maxHeight
             val tablet = minOf(maxWidth, maxHeight) >= 600.dp && maxWidth >= 760.dp
             val compact = landscape && !tablet
+            val showWaveform = settings.source == AudioSource.LOCAL && fileState.ready &&
+                (fileState.waveform ?: tablet) && !crowdOpen && !crowdStatus.connected
+            val bottomInset = if (showWaveform) waveformHeight + 12.dp else 0.dp
             val showPlayback = !crowdOpen && !crowdStatus.connected
             val hudSlotWidth = ((maxWidth - 48.dp) / 2).coerceAtMost(260.dp)
             AndroidView(
@@ -105,7 +110,7 @@ fun PrismApp(
                     }
             )
             AnimatedVisibility(!fullscreen && !tuning && !crowdOpen, enter = fadeIn(), exit = fadeOut()) {
-                BoxWithConstraints(Modifier.fillMaxSize().safeDrawingPadding().padding(16.dp)
+                BoxWithConstraints(Modifier.fillMaxSize().safeDrawingPadding().padding(bottom = bottomInset).padding(16.dp)
                     .padding(top = topControlsHeight + 12.dp)) {
                     val sidePanel = landscape || tablet
                     val panelWidth = if (sidePanel) Modifier.width(if (tablet) 420.dp else 340.dp) else Modifier.fillMaxWidth()
@@ -166,7 +171,7 @@ fun PrismApp(
                             } else Text(crowdStatus.message, color = Color.White, fontSize = 13.sp)
                             if (settings.audioEnabled && (!crowdStatus.connected || crowdStatus.source)) {
                                 AudioPanel(settings.source, status, connecting, { onChange(settings.copy(source = it)) }, onConnect, onDisconnect, recordingState.busy)
-                                SongMonitor(songAssistant) { appSettings = true; tuningTab = "Song"; tuning = true }
+                                if (settings.source != AudioSource.LOCAL) SongMonitor(songAssistant) { appSettings = true; tuningTab = "Song"; tuning = true }
                             }
                             if (!crowdStatus.connected) RecordingLibrary(recordingState, onOpenRecording, onShareRecording)
                         }
@@ -219,11 +224,12 @@ fun PrismApp(
                 appSettings = appSettings, switchScope = { appSettings = !appSettings; tuningTab = if (appSettings) "Audio" else settings.scene.shapeTab },
                 minimized = settingsMinimized, onMinimize = { settingsMinimized = !settingsMinimized },
                 timingMinimized = timingMinimized, onTimingMinimize = { timingMinimized = !timingMinimized },
-                performance = { surface?.engine?.qualityReport ?: RenderQualityReport() }, looks = looks, topControlsHeight = topControlsHeight
+                performance = { surface?.engine?.qualityReport ?: RenderQualityReport() }, looks = looks, topControlsHeight = topControlsHeight,
+                bottomInset = bottomInset, chooseFile = onChooseFile
             )
             if (tablet && settings.tabletMonitor && !crowdOpen) TabletMonitor(songAssistant,
-                Modifier.align(Alignment.BottomStart).safeDrawingPadding().padding(16.dp).width(300.dp))
-            if (tablet && settings.audioEnabled && !fullscreen && !tuning && !crowdOpen && !crowdStatus.connected)
+                Modifier.align(Alignment.BottomStart).safeDrawingPadding().padding(bottom = bottomInset).padding(16.dp).width(300.dp), local = settings.source == AudioSource.LOCAL)
+            if (tablet && settings.audioEnabled && settings.source != AudioSource.LOCAL && !fullscreen && !tuning && !crowdOpen && !crowdStatus.connected)
                 TimingSidebar(settings,status.running,onChange,
                     Modifier.align(Alignment.TopStart).safeDrawingPadding()
                         .padding(start=16.dp,top=topControlsHeight + 28.dp)
@@ -235,7 +241,8 @@ fun PrismApp(
                 .padding(horizontal = 16.dp, vertical = 12.dp)) {
                 Row(Modifier.fillMaxWidth().onSizeChanged { topControlsHeight = with(density) { it.height.toDp() } },
                     horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) {
-                    if (showPlayback) PlaybackControls(songState.notificationAccess, Modifier.width(hudSlotWidth))
+                    if (showPlayback && settings.source == AudioSource.LOCAL) LocalPlaybackControls(onChooseFile, recordingState.busy, Modifier.width(hudSlotWidth))
+                    else if (showPlayback) PlaybackControls(songState.notificationAccess, Modifier.width(hudSlotWidth))
                     else Spacer(Modifier.weight(1f))
                     if (compact && !crowdStatus.connected && !crowdOpen) Row(Modifier.width(hudSlotWidth),
                         horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
@@ -249,6 +256,9 @@ fun PrismApp(
                     }
                 }
             }
+            if (showWaveform) TrackWaveform(recordingState.busy, tablet,
+                Modifier.align(Alignment.BottomCenter).fillMaxWidth().safeDrawingPadding().padding(horizontal = 16.dp, vertical = 8.dp)
+                    .onSizeChanged { waveformHeight = with(density) { it.height.toDp() } })
             if (!recordingState.busy && recordingState.message != null) {
                 Snackbar(Modifier.align(Alignment.TopCenter).safeDrawingPadding().padding(horizontal = 16.dp).padding(top = topControlsHeight + 24.dp),
                     action = { TextButton(onClick = recording::dismissMessage) { Text("Dismiss") } }) {
@@ -361,6 +371,10 @@ fun PrismApp(
                     Text(item.label, color = if (source == item) Lilac else Muted, fontSize = 11.sp, maxLines = 1)
                 }
             }
+        }
+        if (source == AudioSource.LOCAL) {
+            LocalFileSettings(onConnect, captureLocked)
+            return@Column
         }
         if (source == AudioSource.SYSTEM) SpotifyRelayControls(captureLocked || connecting || status.running)
         Spacer(Modifier.height(10.dp))
