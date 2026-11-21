@@ -70,13 +70,14 @@ fun PrismApp(
     val density = LocalDensity.current
     var topControlsHeight by remember { mutableStateOf(100.dp) }
     var settingsMinimized by rememberSaveable { mutableStateOf(false) }
-    var timingMinimized by rememberSaveable { mutableStateOf(false) }
+    var timingMinimized by rememberSaveable { mutableStateOf(true) }
     var surface by remember { mutableStateOf<PrismSurface?>(null) }
     var measuredFps by remember { mutableFloatStateOf(0f) }
-    LaunchedEffect(Unit) { while (true) { measuredFps = surface?.engine?.measuredFps ?: 0f; delay(500) } }
+    LaunchedEffect(fullscreen) { while (!fullscreen) { measuredFps = surface?.engine?.measuredFps ?: 0f; delay(500) } }
     val status by AudioEngine.status.collectAsStateWithLifecycle()
     val recordingState by recording.state.collectAsStateWithLifecycle()
     val crowdStatus by crowd.status.collectAsStateWithLifecycle()
+    val player by NowPlaying.controls.collectAsStateWithLifecycle()
     val songState by songAssistant.state.collectAsStateWithLifecycle()
     val fileState by LocalAudio.state.collectAsStateWithLifecycle()
     var waveformHeight by remember { mutableStateOf(120.dp) }
@@ -88,18 +89,27 @@ fun PrismApp(
     MaterialTheme(colorScheme = darkColorScheme(primary = Lilac, secondary = Mint, background = Ink, surface = Panel, onSurface = Color.White)) {
         BoxWithConstraints(Modifier.fillMaxSize().background(Ink)) {
             val landscape = maxWidth > maxHeight
-            val tablet = minOf(maxWidth, maxHeight) >= 600.dp && maxWidth >= 760.dp
+            val tablet = minOf(maxWidth, maxHeight) >= 600.dp
             val compact = landscape && !tablet
             val showWaveform = settings.source == AudioSource.LOCAL && fileState.ready &&
                 (fileState.waveform ?: tablet) && !crowdOpen && !crowdStatus.connected
             val bottomInset = if (showWaveform) waveformHeight + 12.dp else 0.dp
             val showPlayback = !crowdOpen && !crowdStatus.connected
-            val hudSlotWidth = ((maxWidth - 48.dp) / 2).coerceAtMost(260.dp)
+            val hudSlotWidth = ((maxWidth - 48.dp) / 2).coerceAtMost(if (tablet) 206.dp else 260.dp)
             AndroidView(
                 factory = { createSurface().also { surface = it } },
                 update = { it.update(settings); it.updateCrowd(crowd) },
                 modifier = Modifier.fillMaxSize()
-                    .semantics { contentDescription = "${settings.scene.title} visualizer. Drag to move the scene." }
+            )
+            Box(
+                Modifier.fillMaxSize()
+                    .semantics {
+                        contentDescription = "${settings.scene.title} visualizer. Drag to move the scene."
+                        if (fullscreen) onClick(label = "Return to controls") {
+                            fullscreen = false
+                            true
+                        }
+                    }
                     .pointerInput(fullscreen) { detectTapGestures { if (fullscreen) fullscreen = false } }
                     .pointerInput(Unit) {
                         detectDragGestures(onDragEnd = { surface?.engine?.touchX = 0f; surface?.engine?.touchY = 0f }) { change, _ ->
@@ -109,11 +119,12 @@ fun PrismApp(
                         }
                     }
             )
-            AnimatedVisibility(!fullscreen && !tuning && !crowdOpen, enter = fadeIn(), exit = fadeOut()) {
+            if (fullscreen) return@BoxWithConstraints
+            AnimatedVisibility(!tuning && !crowdOpen, enter = fadeIn(), exit = fadeOut()) {
                 BoxWithConstraints(Modifier.fillMaxSize().safeDrawingPadding().padding(bottom = bottomInset).padding(16.dp)
                     .padding(top = topControlsHeight + 12.dp)) {
                     val sidePanel = landscape || tablet
-                    val panelWidth = if (sidePanel) Modifier.width(if (tablet) 420.dp else 340.dp) else Modifier.fillMaxWidth()
+                    val panelWidth = if (sidePanel) Modifier.width(if (tablet) (maxWidth * .35f).coerceIn(320.dp, 364.dp) else 340.dp) else Modifier.fillMaxWidth()
                     val panelHeight = if (sidePanel) maxHeight else minOf(maxHeight, (maxHeight + topControlsHeight + 12.dp) * .68f)
                     if (!tablet || !settingsMinimized || crowdStatus.connected) Column(
                         Modifier.align(if (sidePanel) Alignment.BottomEnd else Alignment.BottomCenter)
@@ -142,10 +153,10 @@ fun PrismApp(
                         Column(Modifier.weight(1f, fill = false).verticalScroll(controlsScroll)
                             .semantics { contentDescription = "Pattern controls content" }) {
                             if (!crowdStatus.connected) {
-                                if (!landscape) Text(settings.scene.subtitle, color = Color(0xFFCDD0E0), fontSize = 12.sp,
+                                if (!landscape && !tablet) Text(settings.scene.subtitle, color = Color(0xFFCDD0E0), fontSize = 12.sp,
                                     maxLines = 2, overflow = TextOverflow.Ellipsis)
                                 val selectedIndex = Scene.entries.indexOf(settings.scene)
-                                if (!compact) Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                if (!compact && !tablet) Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                     Text("PATTERNS", color = Muted, fontSize = 10.sp, letterSpacing = 1.sp, modifier = Modifier.weight(1f))
                                     Text("${selectedIndex + 1} / ${Scene.entries.size}", color = Muted, fontSize = 11.sp)
                                     IconButton(onClick = { onChange(settings.copy(scene = Scene.entries[selectedIndex - 1], paused = false)) },
@@ -157,7 +168,19 @@ fun PrismApp(
                                         Text("›", color = if (selectedIndex < Scene.entries.lastIndex) Color.White else Muted.copy(alpha = .4f), fontSize = 25.sp)
                                     }
                                 }
-                                LazyRow(state = sceneScroll, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                if (tablet) {
+                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        Scene.entries.chunked(2).forEach { pair ->
+                                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                                pair.forEach { scene ->
+                                                    SceneCard(scene, scene == settings.scene, compact = true, modifier = Modifier.weight(1f)) {
+                                                        onChange(settings.copy(scene = scene, paused = false))
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                } else LazyRow(state = sceneScroll, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     items(Scene.entries, key = { it.id }) { scene ->
                                         SceneCard(scene, scene == settings.scene, compact) { onChange(settings.copy(scene = scene, paused = false)) }
                                     }
@@ -170,8 +193,8 @@ fun PrismApp(
                                 }
                             } else Text(crowdStatus.message, color = Color.White, fontSize = 13.sp)
                             if (settings.audioEnabled && (!crowdStatus.connected || crowdStatus.source)) {
-                                AudioPanel(settings.source, status, connecting, { onChange(settings.copy(source = it)) }, onConnect, onDisconnect, recordingState.busy)
-                                if (settings.source != AudioSource.LOCAL) SongMonitor(songAssistant) { appSettings = true; tuningTab = "Song"; tuning = true }
+                                AudioPanel(settings.source, status, connecting, { onChange(settings.copy(source = it)) }, onConnect, onDisconnect, recordingState.busy, tablet)
+                                if (!tablet && settings.source != AudioSource.LOCAL) SongMonitor(songAssistant) { appSettings = true; tuningTab = "Song"; tuning = true }
                             }
                             if (!crowdStatus.connected) RecordingLibrary(recordingState, onOpenRecording, onShareRecording)
                         }
@@ -208,13 +231,6 @@ fun PrismApp(
                         { settingsMinimized = false }, Modifier.align(Alignment.CenterEnd))
                 }
             }
-            if (fullscreen) {
-                if (crowdStatus.connected) Text(crowdStatus.phase, Modifier.align(Alignment.TopEnd).safeDrawingPadding().padding(12.dp),
-                    color = Color.White.copy(alpha = .6f), fontSize = 10.sp)
-                var hintVisible by remember { mutableStateOf(true) }
-                LaunchedEffect(Unit) { delay(2400); hintVisible = false }
-                if (hintVisible) Text("Tap anywhere to return", Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(24.dp).clip(CircleShape).background(Ink.copy(alpha = 0.7f)).padding(horizontal = 18.dp, vertical = 10.dp), color = Color.White, fontSize = 12.sp)
-            }
             if (renderError != null) Text(renderError, Modifier.align(Alignment.Center).padding(30.dp).background(Panel).padding(20.dp), color = Color.White)
             if (crowdOpen) CrowdOverlay(crowd, crowdStatus, crowdInvitation, onCrowdJoin, onCrowdLeave, onCrowdBrightness) { crowdOpen = false }
             if (tuning) TuningOverlay(
@@ -223,28 +239,31 @@ fun PrismApp(
                 songAssistant = songAssistant, initialTab = tuningTab, tablet = tablet,
                 appSettings = appSettings, switchScope = { appSettings = !appSettings; tuningTab = if (appSettings) "Audio" else settings.scene.shapeTab },
                 minimized = settingsMinimized, onMinimize = { settingsMinimized = !settingsMinimized },
-                timingMinimized = timingMinimized, onTimingMinimize = { timingMinimized = !timingMinimized },
                 performance = { surface?.engine?.qualityReport ?: RenderQualityReport() }, looks = looks, topControlsHeight = topControlsHeight,
                 bottomInset = bottomInset, chooseFile = onChooseFile
             )
-            if (tablet && settings.tabletMonitor && !crowdOpen) TabletMonitor(songAssistant,
-                Modifier.align(Alignment.BottomStart).safeDrawingPadding().padding(bottom = bottomInset).padding(16.dp).width(300.dp), local = settings.source == AudioSource.LOCAL)
-            if (tablet && settings.audioEnabled && settings.source != AudioSource.LOCAL && !fullscreen && !tuning && !crowdOpen && !crowdStatus.connected)
-                TimingSidebar(settings,status.running,onChange,
-                    Modifier.align(Alignment.TopStart).safeDrawingPadding()
-                        .padding(start=16.dp,top=topControlsHeight + 28.dp)
-                        .width(if (timingMinimized) 56.dp else 300.dp)
-                        .heightIn(max=(maxHeight-topControlsHeight-300.dp).coerceAtLeast(120.dp)),
-                    minimized = timingMinimized, onMinimize = { timingMinimized = !timingMinimized })
+            val showTiming = tablet && settings.audioEnabled && settings.source != AudioSource.LOCAL && !crowdStatus.connected
+            val showMonitor = tablet && settings.tabletMonitor && (status.running || (settings.source == AudioSource.LOCAL && fileState.ready))
+            if (!crowdOpen && (showTiming || showMonitor)) {
+                Column(Modifier.align(Alignment.BottomStart).safeDrawingPadding()
+                    .padding(start = 12.dp, top = topControlsHeight + 24.dp, bottom = bottomInset + 12.dp)
+                    .width((maxWidth * .29f).coerceIn(164.dp, 272.dp)).fillMaxHeight(),
+                    verticalArrangement = Arrangement.spacedBy(6.dp, Alignment.Bottom)) {
+                    if (showTiming) TimingSidebar(settings, status.running, onChange,
+                        Modifier.weight(1f, fill = false).then(if (timingMinimized) Modifier else Modifier.fillMaxWidth()),
+                        minimized = timingMinimized, onMinimize = { timingMinimized = !timingMinimized })
+                    if (showMonitor) TabletMonitor(songAssistant, Modifier.fillMaxWidth(), local = settings.source == AudioSource.LOCAL)
+                }
+            }
             Row(Modifier.align(Alignment.TopCenter).fillMaxWidth()
                 .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
                 .padding(horizontal = 16.dp, vertical = 12.dp)) {
                 Row(Modifier.fillMaxWidth().onSizeChanged { topControlsHeight = with(density) { it.height.toDp() } },
                     horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) {
                     if (showPlayback && settings.source == AudioSource.LOCAL) LocalPlaybackControls(onChooseFile, recordingState.busy, Modifier.width(hudSlotWidth))
-                    else if (showPlayback) PlaybackControls(songState.notificationAccess, Modifier.width(hudSlotWidth))
+                    else if (showPlayback && (!tablet || (songState.notificationAccess && player != null))) PlaybackControls(songState.notificationAccess, Modifier.width(hudSlotWidth))
                     else Spacer(Modifier.weight(1f))
-                    if (compact && !crowdStatus.connected && !crowdOpen) Row(Modifier.width(hudSlotWidth),
+                    if ((compact || tablet) && !crowdStatus.connected && !crowdOpen) Row(Modifier.width(if (tablet) 228.dp else hudSlotWidth),
                         horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
                         SessionRecordControl(recordingState, status.source.takeIf { status.running }, connecting, onRecord,
                             { recording.stop() }, Modifier.weight(1f))
@@ -277,9 +296,9 @@ fun PrismApp(
         color = Color.White, fontSize = 14.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Medium, maxLines = 1)
 }
 
-@Composable private fun SceneCard(scene: Scene, selected: Boolean, compact: Boolean = false, click: () -> Unit) {
+@Composable private fun SceneCard(scene: Scene, selected: Boolean, compact: Boolean = false, modifier: Modifier = Modifier, click: () -> Unit) {
     val labelScale = LocalDensity.current.fontScale.coerceAtLeast(1f)
-    Column(Modifier.width((if (scene == Scene.KALEIDOSCOPE) 128.dp else 112.dp) * labelScale)
+    Column(modifier.width((if (scene == Scene.KALEIDOSCOPE) 128.dp else 112.dp) * labelScale)
         .height(if (compact) 48.dp else 90.dp).clip(RoundedCornerShape(16.dp))
         .background(Brush.verticalGradient(listOf(scene.accent.copy(alpha = if (selected) 0.23f else 0.10f), Panel)))
         .border(1.dp, if (selected) scene.accent.copy(alpha = 0.8f) else Color.White.copy(alpha = 0.09f), RoundedCornerShape(16.dp))
@@ -342,16 +361,16 @@ fun PrismApp(
     }
 }
 
-@Composable private fun AudioPanel(source: AudioSource, status: CaptureStatus, connecting: Boolean, onSource: (AudioSource) -> Unit, onConnect: () -> Unit, onDisconnect: () -> Unit, captureLocked: Boolean) {
+@Composable private fun AudioPanel(source: AudioSource, status: CaptureStatus, connecting: Boolean, onSource: (AudioSource) -> Unit, onConnect: () -> Unit, onDisconnect: () -> Unit, captureLocked: Boolean, tablet: Boolean) {
     val connectRow = remember { BringIntoViewRequester() }
-    LaunchedEffect(Unit) { withFrameNanos { }; connectRow.bringIntoView() }
+    LaunchedEffect(tablet) { if (!tablet) { withFrameNanos { }; connectRow.bringIntoView() } }
     var energy by remember { mutableFloatStateOf(0f) }
     var rhythm by remember { mutableStateOf(RhythmState()) }
     var timingNow by remember { mutableDoubleStateOf(0.0) }
     var silentSeconds by remember { mutableIntStateOf(0) }
-    LaunchedEffect(status.running) {
+    LaunchedEffect(status.running, tablet) {
         var quietTicks = 0
-        while (status.running) {
+        while (!tablet && status.running) {
             energy = AudioEngine.levels.energy
             rhythm = AudioEngine.rhythm
             timingNow = System.nanoTime()/1e9
@@ -361,13 +380,15 @@ fun PrismApp(
         }
         energy = 0f; silentSeconds = 0; rhythm = RhythmState()
     }
-    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(Panel.copy(alpha = 0.9f)).border(1.dp, Color.White.copy(alpha = 0.10f), RoundedCornerShape(18.dp)).padding(14.dp)) {
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(Panel.copy(alpha = 0.9f)).border(1.dp, Color.White.copy(alpha = 0.10f), RoundedCornerShape(18.dp)).padding(if (tablet) 8.dp else 14.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             AudioSource.entries.forEach { item ->
                 Row(Modifier.weight(1f).clip(RoundedCornerShape(10.dp)).background(if (source == item) Lilac.copy(alpha = 0.16f) else Color.Transparent)
-                    .selectable(source == item, enabled = !captureLocked, onClick = { onSource(item) }, role = Role.RadioButton).padding(horizontal = 9.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
-                    Glyph(if (item == AudioSource.MICROPHONE) "mic" else "audio", Modifier.size(14.dp), if (source == item) Lilac else Muted)
-                    Spacer(Modifier.width(7.dp))
+                    .selectable(source == item, enabled = !captureLocked, onClick = { onSource(item) }, role = Role.RadioButton).heightIn(min = 48.dp).padding(horizontal = if (tablet) 4.dp else 9.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
+                    if (!tablet) {
+                        Glyph(if (item == AudioSource.MICROPHONE) "mic" else "audio", Modifier.size(14.dp), if (source == item) Lilac else Muted)
+                        Spacer(Modifier.width(7.dp))
+                    }
                     Text(item.label, color = if (source == item) Lilac else Muted, fontSize = 11.sp, maxLines = 1)
                 }
             }
@@ -376,14 +397,18 @@ fun PrismApp(
             LocalFileSettings(onConnect, captureLocked)
             return@Column
         }
-        if (source == AudioSource.SYSTEM) SpotifyRelayControls(captureLocked || connecting || status.running)
-        Spacer(Modifier.height(10.dp))
+        if (!tablet && source == AudioSource.SYSTEM) SpotifyRelayControls(captureLocked || connecting || status.running)
+        Spacer(Modifier.height(if (tablet) 2.dp else 10.dp))
         Row(Modifier.bringIntoViewRequester(connectRow), verticalAlignment = Alignment.CenterVertically) {
-            Text(if (source == AudioSource.SYSTEM) "Device playback" else "Microphone input", color = Muted, fontSize = 11.sp, modifier = Modifier.weight(1f))
+            if (tablet) Spacer(Modifier.weight(1f)) else Text(if (source == AudioSource.SYSTEM) "Device playback" else "Microphone input", color = Muted, fontSize = 11.sp, modifier = Modifier.weight(1f))
             SettingHelp("Input source")
             TextButton(onClick = if (status.running) onDisconnect else onConnect, enabled = !connecting && !captureLocked, contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)) {
                 Text(if (captureLocked) "Input locked" else if (connecting) "Connecting…" else if (status.running) "Stop" else "Connect audio", fontSize = 11.sp)
             }
+        }
+        if (tablet) {
+            status.message?.let { Text(it, color = Muted, fontSize = 11.sp) }
+            return@Column
         }
         RhythmMonitor(status.running, rhythm, timingNow, energy, details = false)
         val feedback = RhythmFeedback.from(status.running, rhythm, timingNow)

@@ -4,7 +4,7 @@ prism runs in a browser on desktop, tablet, or phone. The four patterns use the 
 
 ## Run the release
 
-Download **prism-web-1.16.0.zip** from [GitHub Releases](https://github.com/xklob/prism/releases/tag/v1.16.0) and extract it. With Node.js installed, open a terminal in the extracted directory and run:
+Download **prism-web-1.16.1.zip** from [GitHub Releases](https://github.com/xklob/prism/releases/tag/v1.16.1) and extract it. With Node.js installed, open a terminal in the extracted directory and run:
 
 ```sh
 node serve.mjs --open
@@ -20,7 +20,7 @@ The **Windows x64 controller ZIP** includes the web app and Node.js. **Start-pri
 
 | Task | In the web app |
 | --- | --- |
-| Render a pattern | Select Kaleido, Wormhole, Mandelbrot, or Kaleidoscope. Drag the visual to reframe, pause motion, hide the settings panel, or use **Immerse** for a full-window view. |
+| Render a pattern | Select Kaleido, Wormhole, Mandelbrot, or Kaleidoscope. Drag the visual to reframe, pause motion, hide the settings panel, or use **Immerse** for edge-to-edge visuals. Tap the canvas or press Escape to restore controls. Audio and recording continue. |
 | Tune the image | **Tune** has each pattern’s geometry, motion, palette, and beat controls. **Settings → Effects** adds bloom and blur. Target FPS, battery saver, render-scale feedback, and adaptive quality are under **Display**. |
 | Follow live audio | In **Audio**, choose **Microphone** or **Tab / system audio**, then **Connect audio**. For tab capture, select a surface with audio and enable audio sharing in the browser picker. The visualizer uses its audio track. |
 | Play a file | **Audio → Local file → Choose file** decodes and analyzes the track on-device. Press play when analysis finishes. Use the waveform, restart, or ten-second seek controls. A changed file meter or phrase length takes effect with **Analyze again**. |

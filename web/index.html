@@ -40,7 +40,12 @@
         <button id="record" class="tool record" aria-label="Record session">
           <i data-icon="record"></i><span>Record</span>
         </button>
-        <button id="immerse" aria-label="Immerse" title="Immersive view" class="tool primary">
+        <button
+          id="immerse"
+          aria-label="Immerse"
+          title="Visuals only. Tap the visual or press Escape to return."
+          class="tool primary"
+        >
           <i data-icon="expand"></i><span>Immerse</span>
         </button>
       </div>
@@ -54,12 +59,7 @@
             <span class="readout" id="input-mode">Ambient</span><span id="stage-title">Kaleido</span>
           </div>
           <div class="stage-top">
-            <span id="fps">… FPS</span
-            ><button id="exit-immersive" class="glass" hidden aria-label="Exit immersive view">
-              <i data-icon="collapse"></i></button
-            ><button id="immersive-record" class="glass" hidden aria-label="Record session">
-              <i data-icon="record"></i>
-            </button>
+            <span id="fps">… FPS</span>
           </div>
           <div class="transport" id="transport" hidden>
             <span class="track" id="track"></span>

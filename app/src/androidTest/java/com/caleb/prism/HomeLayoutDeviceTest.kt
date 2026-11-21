@@ -46,7 +46,7 @@ class HomeLayoutDeviceTest {
     }
     private fun hud(): List<Rect> {
         val fps = requireNotNull(device.findObject(By.descStartsWith("Current frame rate")))
-        val bounds = listOf(node("System playback controls").visibleBounds, node("Record session").visibleBounds, fps.visibleBounds)
+        val bounds = listOfNotNull(device.findObject(By.desc("System playback controls"))?.visibleBounds, node("Record session").visibleBounds, fps.visibleBounds)
         bounds.forEachIndexed { i, rect ->
             assertTrue(rect.width() > 0 && rect.height() > 0)
             bounds.drop(i+1).forEach { assertFalse("HUD controls overlap: $rect and $it", Rect.intersects(rect, it)) }
@@ -67,7 +67,7 @@ class HomeLayoutDeviceTest {
         for (label in listOf("Kaleidoscope", "Tune", "Immerse") + if (compact) emptyList() else listOf("prism", "App settings", "Join crowd show"))
             assertTrue("$label is backed by the panel", panel.contains(text(label).visibleBounds))
         device.takeScreenshot(File(evidence, "home-panel-${device.displayWidth}-${context.resources.configuration.fontScale}.png"))
-        if (compact) node("Pattern Mandelbrot").click() else node("Previous pattern").click()
+        if (!device.hasObject(By.desc("Previous pattern"))) node("Pattern Mandelbrot").click() else node("Previous pattern").click()
         SystemClock.sleep(700)
         assertEquals(Scene.MANDELBROT, SettingsStore(context).load().scene)
         // The footer remains reachable when audio controls enlarge the scrolling content.
@@ -76,7 +76,9 @@ class HomeLayoutDeviceTest {
         hud().forEach { assertFalse("Tuning overlaps a persistent control", Rect.intersects(tuning, it)) }
         text("Done").click(); text("Immerse").click()
         device.wait(Until.findObject(By.text("Got it")), 500)?.click()
-        SystemClock.sleep(800); hud()
+        SystemClock.sleep(800); refresh()
+        assertFalse(device.hasObject(By.descStartsWith("Current frame rate")))
+        assertFalse(device.hasObject(By.desc("Record session")))
         assertFalse(device.hasObject(By.desc("Pattern controls panel")))
     }
     @Test fun audioInputAndFooterRemainReachable() {

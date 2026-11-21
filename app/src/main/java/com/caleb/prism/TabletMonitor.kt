@@ -16,8 +16,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.delay
+import kotlin.math.roundToInt
 
-/** Compose-only status stays visible in fullscreen and never enters the video renderer. */
+/** Live tablet status shares a column with the optional timing controls. */
 @Composable fun TabletMonitor(assistant: SongAssistant, modifier: Modifier = Modifier, local: Boolean = false) {
     val capture by AudioEngine.status.collectAsStateWithLifecycle()
     val file by LocalAudio.state.collectAsStateWithLifecycle()
@@ -26,20 +27,24 @@ import kotlinx.coroutines.delay
     var energy by remember { mutableFloatStateOf(0f) }
     var now by remember { mutableDoubleStateOf(0.0) }
     LaunchedEffect(capture.running) {
-        while (true) {
+        while (capture.running) {
             rhythm = AudioEngine.rhythm; phrase = AudioEngine.phrase
             energy = AudioEngine.levels.energy; now = System.nanoTime() / 1e9
             delay(100)
         }
     }
-    val shape = RoundedCornerShape(18.dp)
+    val shape = RoundedCornerShape(14.dp)
     Column(modifier.clip(shape).background(Color(0xD9060914))
         .border(1.dp, Color.White.copy(alpha = .14f), shape)
         .semantics { contentDescription = "Tablet song and timing monitor" }
-        .padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        .padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         if (local) {
             Text(file.title, color = Color.White, fontSize = 12.sp)
-            Text("Local file // analyzed timing", color = Color(0xFFCBC9D4), fontSize = 10.sp)
+            if (!capture.running) {
+                Text(listOfNotNull(file.bpm.takeIf { it > 0 }?.let { "${it.roundToInt()} BPM" }, "Paused").joinToString(" · "),
+                    color = Color(0xFFCBC9D4), fontSize = 11.sp)
+                return@Column
+            }
         } else SongMonitor(assistant)
         HorizontalDivider(color = Color.White.copy(alpha = .12f))
         RhythmMonitor(capture.running, rhythm, now, energy, details = false, showPhrase = false)
