@@ -4,97 +4,160 @@ import { networkInterfaces } from 'node:os';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
+import { setTimeout as delay } from 'node:timers/promises';
 import QRCode from 'qrcode';
 import { Show } from './show.ts';
 import type { AudioInput } from './show.ts';
 import { identity } from './wire.ts';
+import { applicationUrl, ParticipantError, startBrowserParticipants } from './browser-participants.ts';
 
 export const now = (): number => Math.round(performance.now() * 1000) / 1000;
 const secret = () => randomBytes(24).toString('base64url');
 const equal = (a: unknown, b: string) => typeof a === 'string' && Buffer.byteLength(a) === Buffer.byteLength(b) &&
   timingSafeEqual(Buffer.from(a), Buffer.from(b));
-type Participant = { address: string; port: number; name: string; seen: number; source: boolean;
+type Endpoint = { kind: 'udp'; address: string; port: number } | { kind: 'web'; address: string };
+type Participant = { endpoint: Endpoint; name: string; seen: number; source: boolean;
   health: Record<string, unknown>; rateAt: number; rateCount: number };
-export async function startController(options: { udpPort?: number; httpPort?: number; host?: string } = {}) {
+type Message = { id: string; v: number; token: string; type: string; name?: unknown; t1: number; nonce: string;
+  health?: Record<string, unknown>; audio?: AudioInput; sid?: string };
+export async function startController(options: { udpPort?: number; httpPort?: number; host?: string; webUrl?: string; appDirectory?: string } = {}) {
   const dashboard = await readFile(fileURLToPath(new URL('../web/index.html', import.meta.url)));
   const browserScript = await readFile(fileURLToPath(new URL('../web/app.js', import.meta.url)));
   const udpPort = options.udpPort ?? Number(process.env.PRISM_UDP_PORT ?? 48761);
   const httpPort = options.httpPort ?? Number(process.env.PRISM_HTTP_PORT ?? 48760);
+  const customUrl = options.webUrl ?? process.env.PRISM_WEB_URL;
+  const appUrl = customUrl ? applicationUrl(customUrl) : undefined;
+  const appDirectory = options.appDirectory ?? process.env.PRISM_APP_DIR ?? fileURLToPath(new URL('../app/', import.meta.url));
+  const cert = process.env.PRISM_TLS_CERT, key = process.env.PRISM_TLS_KEY;
+  if (!!cert !== !!key) throw new Error('Configure both PRISM_TLS_CERT and PRISM_TLS_KEY for HTTPS.');
+  const tls = cert && key ? { cert: await readFile(cert), key: await readFile(key) } : undefined;
   const show = new Show(), keys = identity(), sid = randomUUID();
   const viewerToken = secret(), sourceToken = secret(), adminToken = secret();
   const clients = new Map<string, Participant>();
   const udp = dgram.createSocket('udp4');
   let seq = 0, audioOwner: string | undefined, rejected = 0, lastPacketBytes = 0;
   let socketError = '';
-  const signPacket = (type: string, body: object) => keys.encode({ v: 1, type, sid, ...body });
+  const message = (type: string, body: object) => ({ v: 1, type, sid, ...body });
+  const state = (time: number) => message('state', { seq: ++seq, sent: time, validUntil: time + 2000, ...show.snapshot(time) });
+  let browserState = keys.webEnvelope(state(now()));
   const send = (packet: Buffer, peer: { port: number; address: string }) =>
     udp.send(packet, peer.port, peer.address, (error) => { if (error) socketError = error.message; });
+
+  function participant(m: Message, endpoint: Endpoint, received: number) {
+    const source = equal(m.token, sourceToken);
+    if (!source && !equal(m.token, viewerToken)) throw new ParticipantError(403, 'Invalid invitation.');
+    if (m.v !== 1 || typeof m.id !== 'string' || !/^[a-zA-Z0-9-]{1,64}$/.test(m.id)) {
+      throw new ParticipantError(400, 'Invalid participant.');
+    }
+    if ((m.type === 'sync' || m.type === 'exchange') &&
+        (!Number.isFinite(m.t1) || typeof m.nonce !== 'string' || !m.nonce.length || m.nonce.length > 64)) {
+      throw new ParticipantError(400, 'Invalid clock request.');
+    }
+    const id = endpoint.kind + ':' + m.id;
+    let client = clients.get(id);
+    if (client && client.source !== source) throw new ParticipantError(403, 'Invitation role mismatch.');
+    if (m.type === 'leave') {
+      clients.delete(id);
+      if (audioOwner === id) audioOwner = undefined;
+      return;
+    }
+    if (!client) {
+      if (clients.size >= 50) throw new ParticipantError(503, 'This show already has 50 participants.');
+      client = { endpoint, name: String(m.name ?? 'prism phone').slice(0, 64), seen: received, source,
+        health: {}, rateAt: received, rateCount: 0 };
+      clients.set(id, client);
+    }
+    if (received - client.rateAt > 1000) { client.rateAt = received; client.rateCount = 0; }
+    if (++client.rateCount > 40) throw new ParticipantError(429, 'Too many timing requests.');
+    client.endpoint = endpoint; client.seen = received;
+    if (m.health && typeof m.health === 'object') {
+      const health = m.health;
+      client.health = Object.fromEntries(['state', 'clockMs', 'fps', 'missed', 'frames', 'phraseBar', 'beatConfidence']
+        .filter(k => ['string', 'number', 'boolean'].includes(typeof health[k]))
+        .map(k => [k, typeof health[k] === 'string' ? health[k].slice(0, 80) : health[k]]));
+    }
+    if (m.audio && source) {
+      if (audioOwner && audioOwner !== id) throw new ParticipantError(409, 'Another device owns the audio input. Disconnect it first.');
+      try { show.receiveAudio(m.audio, received); }
+      catch { throw new ParticipantError(422, 'The audio timing is stale or invalid.'); }
+      audioOwner = id;
+    }
+  }
+  function sync(m: Message, received: number) {
+    return message('sync', { id: m.id, nonce: m.nonce, t1: m.t1, t2: received, t3: now() });
+  }
   udp.on('error', error => { socketError = error.message; });
   udp.on('message', (packet, remote) => {
     const received = now();
     try {
       if (packet.length > 4096) return;
-      const m = JSON.parse(packet.toString());
-      if (m.v !== 1 || !/^[a-zA-Z0-9-]{1,64}$/.test(m.id)) return;
-      const source = equal(m.token, sourceToken);
-      if (!source && !equal(m.token, viewerToken)) return;
-      let client = clients.get(m.id);
-      if (!client) {
-        if (clients.size >= 50) {
-          send(signPacket('error', { message: 'This show already has 50 participants.' }), remote); return;
-        }
-        client = { address: remote.address, port: remote.port,
-          name: String(m.name ?? 'prism phone').slice(0, 64), seen: received, source,
-          health: {}, rateAt: received, rateCount: 0 };
-        clients.set(m.id, client);
+      const m: Message = JSON.parse(packet.toString());
+      if (!['sync', 'health', 'audio', 'leave'].includes(m.type)) return;
+      if (m.type !== 'audio') delete m.audio;
+      if (m.type !== 'health') delete m.health;
+      participant(m, { kind: 'udp', address: remote.address, port: remote.port }, received);
+      if (m.type === 'sync') send(keys.encode(sync(m, received)), remote);
+    } catch (error) {
+      if (error instanceof ParticipantError && [409, 503].includes(error.code)) {
+        send(keys.encode(message('error', { message: error.message })), remote);
       }
-      if (received - client.rateAt > 1000) { client.rateAt = received; client.rateCount = 0; }
-      if (++client.rateCount > 40) return;
-      client.address = remote.address; client.port = remote.port; client.seen = received;
-      if (m.type === 'leave') {
-        clients.delete(m.id); if (audioOwner === m.id) audioOwner = undefined; return;
-      }
-      if (m.type === 'sync' && Number.isFinite(m.t1) && typeof m.nonce === 'string' && m.nonce.length <= 64) {
-        send(signPacket('sync', { id: m.id, nonce: m.nonce, t1: m.t1, t2: received, t3: now() }), client);
-      } else if (m.type === 'health' && m.health && typeof m.health === 'object') {
-        client.health = Object.fromEntries(['state', 'clockMs', 'fps', 'missed', 'frames', 'phraseBar', 'beatConfidence']
-          .filter(key => ['string', 'number', 'boolean'].includes(typeof m.health[key]))
-          .map(key => [key, typeof m.health[key] === 'string' ? m.health[key].slice(0, 80) : m.health[key]]));
-      } else if (m.type === 'audio' && source) {
-        if (audioOwner && audioOwner !== m.id) {
-          send(signPacket('error', { message: 'Another phone owns the audio input. Disconnect it first.' }), client); return;
-        }
-        show.receiveAudio(m.audio as AudioInput, received);
-        audioOwner = m.id;
-      }
-    } catch { rejected++; }
+      rejected++;
+    }
   });
   await new Promise<void>((resolve, reject) => {
     udp.once('error', reject);
     udp.bind(udpPort, '0.0.0.0', () => { udp.removeListener('error', reject); resolve(); });
   });
   const boundPort = udp.address().port;
+  const interfaces = () => Object.entries(networkInterfaces()).flatMap(([name, entries]) =>
+    (entries ?? []).filter(n => n.family === 'IPv4' && !n.internal)
+      .map(n => ({ name, address: n.address })));
+  let advertisedHost = options.host ?? process.env.PRISM_HOST ?? interfaces()[0]?.address ?? '127.0.0.1';
+  const localAppUrl = () => new URL((tls ? 'https://' : 'http://') + advertisedHost + ':' + boundPort + '/');
+  const appOrigins = new Set([localAppUrl().origin]);
+  if (appUrl) appOrigins.add(appUrl.origin);
+  const browser = await startBrowserParticipants(boundPort, appOrigins, appDirectory, tls, (packet, address, received) => {
+    const m: Message = JSON.parse(packet);
+    if (m.sid !== sid) throw new ParticipantError(403, 'Expired invitation.');
+    if (!['exchange', 'leave'].includes(m.type)) throw new ParticipantError(400, 'Unknown request.');
+    if (m.audio && !equal(m.token, sourceToken)) throw new ParticipantError(403, 'Audio input requires a source invitation.');
+    let errorEnvelope;
+    try { participant(m, { kind: 'web', address }, received); }
+    catch (error) {
+      if (!(error instanceof ParticipantError) || ![409, 422].includes(error.code)) throw error;
+      errorEnvelope = keys.webEnvelope(message('error', { message: error.message }));
+    }
+    if (m.type === 'leave') return {};
+    return { sync: keys.webEnvelope(sync(m, received)), state: browserState, error: errorEnvelope };
+  }, now).catch(async error => {
+    await new Promise<void>(resolve => udp.close(() => resolve()));
+    throw error;
+  });
   const ticker = setInterval(() => {
     const time = now();
     for (const [id, client] of clients) if (time - client.seen > 5000) {
       clients.delete(id); if (audioOwner === id) audioOwner = undefined;
     }
-    const packet = signPacket('state', { seq: ++seq, sent: time, validUntil: time + 2000, ...show.snapshot(time) });
+    const schedule = state(time);
+    const packet = keys.encode(schedule);
+    browserState = keys.webEnvelope(schedule);
     lastPacketBytes = packet.length;
-    for (const peer of clients.values()) send(packet, peer);
+    for (const { endpoint } of clients.values()) if (endpoint.kind === 'udp') send(packet, endpoint);
   }, 100);
-  const interfaces = () => Object.entries(networkInterfaces()).flatMap(([name, entries]) =>
-    (entries ?? []).filter(n => n.family === 'IPv4' && !n.internal)
-      .map(n => ({ name, address: n.address })));
-  let advertisedHost = options.host ?? process.env.PRISM_HOST ?? interfaces()[0]?.address ?? '127.0.0.1';
-  const joinUrl = (source: boolean) => {
+  const joinUrl = (source: boolean, browserOnly = false) => {
     const uri = new URL('prism://crowd');
     for (const [key, value] of Object.entries({
       host: advertisedHost, port: String(boundPort), sid, key: keys.publicPin,
+      web: tls ? 'https' : 'http',
       token: source ? sourceToken : viewerToken, role: source ? 'source' : 'viewer',
-      ssid: process.env.PRISM_WIFI_SSID ?? '', password: process.env.PRISM_WIFI_PASSWORD ?? ''
+      ssid: browserOnly ? '' : process.env.PRISM_WIFI_SSID ?? '', password: browserOnly ? '' : process.env.PRISM_WIFI_PASSWORD ?? ''
     })) if (value) uri.searchParams.set(key, value);
     return uri.toString();
+  };
+  const webJoinUrl = (source: boolean) => {
+    const url = new URL(appUrl ?? localAppUrl());
+    url.hash = new URLSearchParams({ crowd: joinUrl(source, true) }).toString();
+    return url.toString();
   };
   const web = http.createServer(async (req, res) => {
     const url = new URL(req.url ?? '/', 'http://localhost');
@@ -115,11 +178,12 @@ export async function startController(options: { udpPort?: number; httpPort?: nu
         const time = now();
         json(200, { ...show.snapshot(time), time, host: advertisedHost, interfaces: interfaces(), port: boundPort,
           maxClients: Number(process.env.PRISM_HOTSPOT_LIMIT ?? 0), socketError, packetBytes: lastPacketBytes,
-          clients: [...clients.entries()].map(([id, c]) => ({ id, name: c.name, source: c.source,
+          clients: [...clients.entries()].map(([key, c]) => ({ id: key.slice(key.indexOf(':') + 1), name: c.name, source: c.source,
             age: time - c.seen, ...c.health })), rejected }); return;
       }
       if (req.method === 'GET' && url.pathname === '/api/join') {
-        const link = joinUrl(url.searchParams.get('role') === 'source');
+        const source = url.searchParams.get('role') === 'source';
+        const link = url.searchParams.get('platform') === 'web' ? webJoinUrl(source) : joinUrl(source);
         json(200, { link, qr: await QRCode.toDataURL(link, { width: 400, margin: 2, errorCorrectionLevel: 'M' }) }); return;
       }
       if (req.method === 'POST' && url.pathname === '/api/command') {
@@ -132,6 +196,7 @@ export async function startController(options: { udpPort?: number; httpPort?: nu
         if (command.action === 'interface') {
           if (!interfaces().some(n => n.address === command.host)) throw new Error('Choose a local interface.');
           advertisedHost = command.host;
+          appOrigins.add(localAppUrl().origin);
         } else show.command(command, now());
         json(200, { ok: true }); return;
       }
@@ -141,10 +206,13 @@ export async function startController(options: { udpPort?: number; httpPort?: nu
   try {
     await new Promise<void>((resolve, reject) => {
       web.once('error', reject);
-      web.listen(httpPort, '127.0.0.1', () => { web.removeListener('error', reject); resolve(); });
+      // Existing show port selections can coincide with the default dashboard port.
+      // The launcher already opens the dashboard's actual loopback address.
+      web.listen(httpPort === boundPort ? 0 : httpPort, '127.0.0.1', () => { web.removeListener('error', reject); resolve(); });
     });
   } catch (error) {
     clearInterval(ticker);
+    await new Promise<void>(resolve => browser.close(() => resolve()));
     await new Promise<void>(resolve => udp.close(() => resolve()));
     throw error;
   }
@@ -152,12 +220,16 @@ export async function startController(options: { udpPort?: number; httpPort?: nu
   if (!address || typeof address === 'string') throw new Error('Could not start controller.');
   const dashboardUrl = 'http://127.0.0.1:' + address.port + '/#' + adminToken;
   return {
-    show, sid, publicPin: keys.publicPin, udpPort: boundPort, dashboardUrl, joinUrl,
+    show, sid, publicPin: keys.publicPin, udpPort: boundPort, dashboardUrl, joinUrl, webJoinUrl,
     close: async () => {
       clearInterval(ticker);
       show.command({ action: 'blackout' }, now());
-      const stop = signPacket('state', { seq: ++seq, sent: now(), validUntil: now() + 500, ...show.snapshot(now()) });
-      for (const peer of clients.values()) send(stop, peer);
+      const stopped = state(now()), stop = keys.encode(stopped);
+      browserState = keys.webEnvelope(stopped);
+      for (const { endpoint } of clients.values()) if (endpoint.kind === 'udp') send(stop, endpoint);
+      // Give foreground browser participants two polling intervals to receive the blackout.
+      if ([...clients.values()].some(c => c.endpoint.kind === 'web')) await delay(250);
+      await new Promise<void>(resolve => browser.close(() => resolve()));
       await new Promise<void>(resolve => udp.close(() => resolve()));
       await new Promise<void>(resolve => web.close(() => resolve()));
     }
@@ -167,7 +239,7 @@ export async function startController(options: { udpPort?: number; httpPort?: nu
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const controller = await startController();
   console.log('prism controller: ' + controller.dashboardUrl);
-  console.log('Keep this window open. Ctrl+C stops the show. UDP port: ' + controller.udpPort);
+  console.log('Keep this window open. Ctrl+C stops the show. Participant port (UDP/TCP): ' + controller.udpPort);
   if (process.env.PRISM_LAUNCH_FILE) {
     const { writeFile } = await import('node:fs/promises');
     await writeFile(process.env.PRISM_LAUNCH_FILE, controller.dashboardUrl, { mode: 0o600 });

@@ -95,7 +95,7 @@ class BeatPeriodicity {
             var sum=0.0; var weight=0.0
             for (offset in -5..5) {
                 val kernel=exp(-.5*(offset/2.0).pow(2))
-                val index=Math.floorMod(bin+offset,64)
+                val index=floorMod(bin+offset,64)
                 sum+=sums[index]*kernel; weight+=weights[index]*kernel
             }
             sum/max(1e-9,weight)

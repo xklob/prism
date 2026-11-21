@@ -1,14 +1,12 @@
 package com.caleb.prism
 
-import java.io.InputStream
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
 import kotlin.math.*
 
 /** Exact 1,411-point DFT via Bluestein, with reusable 4,096-point radix-2 buffers. */
 internal class BeatFft {
     private val n = 1411
     private val size = 4096
+    private val hann = DoubleArray(n) { .5 - .5 * cos(2 * PI * it / (n - 1)) }
     private val cosine = DoubleArray(n) { cos(PI * (it.toLong() * it % (2*n)) / n) }
     private val sine = DoubleArray(n) { sin(PI * (it.toLong() * it % (2*n)) / n) }
     private val kernelR = DoubleArray(size)
@@ -25,7 +23,7 @@ internal class BeatFft {
     fun magnitude(samples: FloatArray, offset: Int): DoubleArray {
         real.fill(0.0); imaginary.fill(0.0)
         for (i in 0 until n) {
-            val x = samples[offset+i] * (0.5 - 0.5*cos(2*PI*i/(n-1)))
+            val x = samples[offset+i] * hann[i]
             real[i] = x*cosine[i]; imaginary[i] = -x*sine[i]
         }
         fft(real, imaginary)
@@ -64,17 +62,15 @@ internal class BeatFft {
 }
 
 /** BeatNet's log-filterbank + positive differences, matching its published streaming frontend. */
-class BeatFeatures(filters: InputStream) {
+class BeatFeatures(filters: FloatArray) {
     private val fft = BeatFft()
     private val weights: Array<List<Pair<Int, Float>>>
     private var previous: FloatArray? = null
     init {
-        val bytes=filters.use { it.readBytes() }
-        require(bytes.size == 705*136*4)
-        val buffer=ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
+        require(filters.size == 705*136)
         val columns=Array(136) { mutableListOf<Pair<Int,Float>>() }
         for (bin in 0 until 705) for (band in 0 until 136) {
-            val weight=buffer.float
+            val weight=filters[bin*136+band]
             if (weight != 0f) columns[band].add(bin to weight)
         }
         weights=Array(136) { columns[it].toList() }
@@ -100,8 +96,9 @@ class BeatFeatures(filters: InputStream) {
 /** Fixed-ratio low-pass resampler. State and sample positions survive arbitrary input chunk boundaries. */
 class BeatResampler {
     private val ring=FloatArray(128)
-    private var written=0L
-    private var output=0L
+    private var written = 0
+    private var center = 0
+    private var phase = 0
     private val radius=22
     private fun bessel0(x: Double): Double {
         var sum=1.0; var term=1.0
@@ -124,20 +121,25 @@ class BeatResampler {
     }
     fun push(samples: ShortArray, gain: Float = 1f, emit: (Float) -> Unit) {
         for (sample in samples) {
-            ring[(written%ring.size).toInt()]=(sample/32768f*gain).coerceIn(-1f,1f)
+            ring[written and (ring.size - 1)] = (sample / 32768f * gain).coerceIn(-1f, 1f)
             written++
-            while (true) {
-                val numerator=output*320
-                val center=numerator/147
-                if (center+radius >= written) break
-                val kernel=kernels[(numerator%147).toInt()]
-                var value=0f
+            while (center + radius < written) {
+                val kernel = kernels[phase]
+                var value = 0f
                 for (i in kernel.indices) {
-                    val index=center+i-radius+1
-                    if (index >= 0) value+=ring[(index%ring.size).toInt()]*kernel[i]
+                    val index = center + i - radius + 1
+                    if (index >= 0) value += ring[index and (ring.size - 1)] * kernel[i]
                 }
                 emit(value)
-                output++
+                // Rational 320/147 source steps avoid emulated 64-bit arithmetic per tap on JS.
+                phase += 320
+                center += phase / 147
+                phase %= 147
+            }
+            // Keep indexes bounded even in long sessions, retaining a full valid ring behind the tap.
+            if (written == (1 shl 20) + ring.size) {
+                written -= 1 shl 20
+                center -= 1 shl 20
             }
         }
     }

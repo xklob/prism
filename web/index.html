@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+    <meta name="theme-color" content="#101110" />
+    <meta
+      name="description"
+      content="prism audio-reactive visualizer. Play a local track, tune a pattern, or join a crowd show."
+    />
+    <meta name="referrer" content="no-referrer" />
+    <link rel="icon" href="./assets/icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="./assets/icon-192.png" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="stylesheet" href="./style.css" />
+    <title>prism</title>
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <img src="./assets/icon.svg" width="32" height="32" alt="" />
+        <h1>prism</h1>
+        <span class="slash">//</span><span class="product">visualizer</span>
+      </div>
+      <div class="toolbar">
+        <div class="themes" role="group" aria-label="Theme">
+          <button data-theme-choice="system" aria-label="System theme" title="System theme">
+            <i data-icon="monitor"></i>
+          </button>
+          <button data-theme-choice="light" aria-label="Light theme" title="Light theme">
+            <i data-icon="sun"></i>
+          </button>
+          <button data-theme-choice="dark" aria-label="Dark theme" title="Dark theme">
+            <i data-icon="moon"></i>
+          </button>
+        </div>
+        <button id="pause" class="tool" title="Pause visuals" aria-label="Pause visuals">
+          <i data-icon="pause"></i><span>Pause</span>
+        </button>
+        <button id="record" class="tool record" aria-label="Record session">
+          <i data-icon="record"></i><span>Record</span>
+        </button>
+        <button id="immerse" aria-label="Immerse" title="Immersive view" class="tool primary">
+          <i data-icon="expand"></i><span>Immerse</span>
+        </button>
+      </div>
+    </header>
+    <main class="workspace">
+      <section id="visual" aria-label="Visualizer and patterns">
+        <div class="stage" id="stage">
+          <canvas id="canvas" aria-label="prism visualizer. Drag to reframe the pattern."></canvas>
+          <div class="stage-caption">
+            <span class="readout" id="input-mode">Ambient</span><span id="stage-title">Kaleido</span>
+          </div>
+          <div class="stage-top">
+            <span id="fps">… FPS</span
+            ><button id="exit-immersive" class="glass" hidden aria-label="Exit immersive view">
+              <i data-icon="collapse"></i></button
+            ><button id="immersive-record" class="glass" hidden aria-label="Record session">
+              <i data-icon="record"></i>
+            </button>
+          </div>
+          <div class="transport" id="transport" hidden>
+            <span class="track" id="track"></span>
+            <button data-act="restart" aria-label="Restart track"><i data-icon="restart"></i></button>
+            <button data-act="play" id="transport-play" aria-label="Play track">
+              <i data-icon="play"></i>
+            </button>
+            <button data-act="forward" aria-label="Forward 10 seconds"><i data-icon="forward"></i></button>
+            <time id="track-time"></time>
+          </div>
+          <button type="button" id="monitor" data-act="monitor" class="stage-monitor" hidden></button>
+          <div id="render-error" class="stage-error" role="alert" hidden></div>
+        </div>
+        <div id="wave-panel" hidden>
+          <div class="wave-heading">
+            <span>Track waveform</span><button data-act="wave-hide">Hide</button>
+          </div>
+          <canvas
+            id="wave"
+            role="slider"
+            tabindex="0"
+            aria-label="Seek in track waveform"
+            aria-valuemin="0"
+          ></canvas>
+        </div>
+        <div class="patterns">
+          <div class="strip-head">
+            <h2>Patterns</h2>
+            <div class="strip-tools">
+              <button data-act="panel-toggle" id="panel-toggle" aria-controls="panel" aria-expanded="true">
+                Hide panel</button
+              ><button data-act="recenter" title="Reset the pattern center">
+                <i data-icon="crosshair"></i> Recenter
+              </button>
+            </div>
+          </div>
+          <div class="scene-list" id="scenes" role="group" aria-label="Select pattern"></div>
+        </div>
+      </section>
+      <aside class="panel" aria-label="Visualizer controls" id="panel">
+        <nav class="tabs" id="tabs" aria-label="Control panels">
+          <button data-tab="Tune"><i data-icon="sliders"></i>Tune</button>
+          <button data-tab="Audio"><i data-icon="wave"></i>Audio</button>
+          <button data-tab="Looks"><i data-icon="layers"></i>Looks</button>
+          <button data-tab="Settings"><i data-icon="settings"></i>Settings</button>
+        </nav>
+        <div id="controls"></div>
+      </aside>
+    </main>
+    <input id="file" type="file" accept="audio/*,.wav,.flac,.m4a,.mp3,.aac,.ogg,.opus" hidden />
+    <div id="notice" role="status" hidden></div>
+    <dialog id="dialog">
+      <form method="dialog">
+        <h2 id="dialog-title"></h2>
+        <div id="dialog-content"></div>
+        <div id="dialog-actions"></div>
+      </form>
+    </dialog>
+    <noscript>Enable JavaScript to run prism.</noscript>
+    <script type="module" src="./src/app.js"></script>
+  </body>
+</html>

@@ -1,0 +1,28 @@
+name: Web checks
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: |
+            web/package-lock.json
+            controller/package-lock.json
+      - run: npm ci --prefix controller && npm run check --prefix controller && npm test --prefix controller
+      - run: npm ci --prefix web && npm run build --prefix web && npm test --prefix web
+      - run: npx playwright install --with-deps chromium
+        working-directory: web
+      - run: npm run test:browser --prefix web

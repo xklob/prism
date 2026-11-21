@@ -1,0 +1,11 @@
+{
+  "id": "./", "name": "prism", "short_name": "prism",
+  "description": "Audio-reactive visualizer",
+  "start_url": "./", "scope": "./", "display": "standalone",
+  "background_color": "#101110", "theme_color": "#101110",
+  "icons": [
+    {"src":"./assets/icon-192.png","sizes":"192x192","type":"image/png"},
+    {"src":"./assets/icon-512.png","sizes":"512x512","type":"image/png"},
+    {"src":"./assets/icon.svg","sizes":"any","type":"image/svg+xml"}
+  ]
+}
