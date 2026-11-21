@@ -1,7 +1,10 @@
 // Scope includes the deployment path so multiple prism installations can coexist.
 const prefix = 'prism:' + self.registration.scope + ':';
 const cacheName = prefix + '__BUILD_HASH__';
-const urls = new Set(/* FILES */ [].map((name) => new URL(name, self.registration.scope).href));
+// Static hosts may redirect index.html to the directory URL. A cached redirect
+// cannot be returned for an offline navigation, so cache the directory itself.
+const home = self.registration.scope;
+const urls = new Set(/* FILES */ [].map((name) => (name === 'index.html' ? home : new URL(name, home).href)));
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches
@@ -22,9 +25,7 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
   const url =
-    event.request.mode === 'navigate' && event.request.url.startsWith(self.registration.scope)
-      ? new URL('index.html', self.registration.scope).href
-      : event.request.url;
+    event.request.mode === 'navigate' && event.request.url.startsWith(home) ? home : event.request.url;
   if (urls.has(url))
     event.respondWith(
       caches.open(cacheName).then(async (cache) => (await cache.match(url)) || fetch(event.request))

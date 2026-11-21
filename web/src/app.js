@@ -919,6 +919,11 @@ if ('serviceWorker' in navigator && window.isSecureContext) {
         if (worker.state === 'redundant') ui.offline = 'Offline setup could not finish. Reload to retry.';
       });
       await navigator.serviceWorker.ready;
+      if (!navigator.serviceWorker.controller) {
+        await new Promise((resolve) =>
+          navigator.serviceWorker.addEventListener('controllerchange', resolve, { once: true })
+        );
+      }
       ui.offline = 'Ready for offline use on this device.';
     })
     .catch(() => {
