@@ -1,0 +1,86 @@
+/* The Standard Design rainbow is confined to the interface around the visual. */
+[data-konami-status] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+html.psychedelic body {
+  color-scheme: light;
+  --bg: rgb(255 255 255 / 20%);
+  --panel: rgb(255 255 255 / 76%);
+  --raised: #f8eaf5;
+  --text: #23142d;
+  --muted: #4a3550;
+  --rule: rgb(35 20 45 / 32%);
+  --green: #005e18;
+  --selected: #e2f4df;
+  --accent: #00ff00;
+  --active-text: #171717;
+  color: var(--text);
+  isolation: isolate;
+}
+html.psychedelic body:not(.immersive)::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: linear-gradient(135deg, #ff8cc8, #ffbc78, #ffe783, #a0f793, #6eecd8, #8db9ff, #c99cff);
+  background-size: 170% 170%;
+  animation: klob-rainbow-flow 24s linear infinite;
+}
+.psychedelic [data-konami-ink] {
+  transform-origin: center;
+  animation:
+    klob-rainbow-ink 24s linear infinite,
+    klob-rainbow-warp 12s ease-in-out infinite;
+}
+[data-konami-toggle][aria-pressed='true'] {
+  background: var(--selected);
+  border-color: var(--green);
+  color: var(--green);
+}
+@keyframes klob-rainbow-flow {
+  0% {
+    background-position: 0% 0%;
+    filter: hue-rotate(0deg);
+  }
+  50% {
+    background-position: 100% 100%;
+  }
+  100% {
+    background-position: 0% 0%;
+    filter: hue-rotate(360deg);
+  }
+}
+@keyframes klob-rainbow-ink {
+  from {
+    filter: hue-rotate(0deg);
+  }
+  to {
+    filter: hue-rotate(360deg);
+  }
+}
+@keyframes klob-rainbow-warp {
+  0%,
+  100% {
+    transform: scale(1.006) skew(0.18deg, -0.12deg);
+  }
+  50% {
+    transform: scale(1.012) skew(-0.18deg, 0.12deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  html.psychedelic body:not(.immersive)::before,
+  .psychedelic [data-konami-ink] {
+    animation: none;
+  }
+  html.psychedelic body:not(.immersive)::before {
+    background-size: 100% 100%;
+  }
+}

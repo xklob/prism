@@ -5,7 +5,7 @@ import { Recorder } from './recording.js';
 import { CrowdClient, inviteFromFragment } from './crowd.js';
 import { SongAssist } from './song.js';
 import { Diagnostics, drawWave } from './plots.js';
-import { panelContent, paintIcons, icon, esc, clock } from './controls.js';
+import { panelContent, paintIcons, icon, esc, clock, sliderValue } from './controls.js';
 
 const $ = (id) => document.getElementById(id);
 const canvas = $('canvas'),
@@ -15,6 +15,7 @@ const ui = {
   tab: 'Tune',
   tune: '',
   settings: 'Display',
+  displayEdits: {},
   paused: false,
   immersive: false,
   queued: null,
@@ -136,7 +137,7 @@ function applyTheme() {
   const light =
     prefs.data.theme === 'light' ||
     (prefs.data.theme === 'system' && matchMedia('(prefers-color-scheme: light)').matches);
-  document.querySelector('meta[name=theme-color]').content = light ? '#fafaf8' : '#101110';
+  document.querySelector('meta[name=theme-color]').content = light ? '#fafaf8' : '#171717';
   document
     .querySelectorAll('[data-theme-choice]')
     .forEach((b) => b.setAttribute('aria-pressed', b.dataset.themeChoice === prefs.data.theme));
@@ -412,6 +413,12 @@ function inputChange(el) {
       : el.type === 'range' || (el.tagName === 'SELECT' && name !== 'source')
         ? Number(el.value)
         : el.value;
+  if (el.closest('[data-display-preferences]')) {
+    if (value === prefs.data[name]) delete ui.displayEdits[name];
+    else ui.displayEdits[name] = value;
+    refreshPanel();
+    return;
+  }
   if (name === 'source') {
     if (recorder.active) return;
     audio.stop();
@@ -435,7 +442,9 @@ function inputChange(el) {
   }
   syncSettings();
   if (el.type === 'range') {
-    el.parentElement.querySelector('output').textContent = value;
+    const reading = sliderValue(name, el.labels[0].textContent, value);
+    el.parentElement.querySelector('output').textContent = reading;
+    el.setAttribute('aria-valuetext', reading);
   } else refreshPanel();
 }
 function dialog(title, message, initial, accept) {
@@ -540,6 +549,13 @@ async function action(name, el) {
     return;
   }
   switch (name) {
+    case 'apply-display':
+      for (const [key, value] of Object.entries(ui.displayEdits)) prefs.set(key, value);
+      ui.displayEdits = {};
+      break;
+    case 'cancel-display':
+      ui.displayEdits = {};
+      break;
     case 'palette':
       prefs.setPattern('palette', Number(el.dataset.id));
       break;

@@ -81,7 +81,27 @@ const select = (name, label, value, choices, flags = '') =>
     )
     .join('') +
   '</select></label>';
+export function sliderValue(name, label, value) {
+  const n = Number(value);
+  if (label === 'Recursion depth') return 3 + Math.trunc(n * 6) + ' levels';
+  if (label === 'Fractal detail') return 32 + Math.trunc(n * 40) + ' steps';
+  if (label === 'Fractal iterations') return 80 + Math.trunc(n * 176) + ' iterations';
+  if (label === 'Zoom depth') return Math.round(2 ** (4 + n * 3)) + '×';
+  if (name === 'pattern.hue') return Number((n * 360).toFixed(2)) + '°';
+  if (name === 'pattern.pulseLength') return n + ' beats';
+  if (name === 'pattern.invertFadeMs' || name === 'syncOffsetMs') return n + ' ms';
+  if (name === 'seconds') return n + ' s';
+  if (
+    ['sensitivity', 'pattern.zoom', 'pattern.kaleidoscopeSpace', 'pattern.speed', 'pattern.morph'].includes(
+      name
+    )
+  )
+    return n + '×';
+  if (name.startsWith('fx.') || name === 'crowdBrightness') return Number((n * 100).toFixed(2)) + '%';
+  return String(n);
+}
 function slider(name, label, value, min, max, step, catalog) {
+  const reading = sliderValue(name, label, value);
   return (
     '<div class="slider"><div class="row"><span><label for="sl-' +
     name +
@@ -92,11 +112,13 @@ function slider(name, label, value, min, max, step, catalog) {
     '</span><output for="sl-' +
     name +
     '">' +
-    value +
+    reading +
     '</output></div><input type="range" id="sl-' +
     name +
     '" data-setting="' +
     name +
+    '" aria-valuetext="' +
+    reading +
     '" min="' +
     min +
     '" max="' +
@@ -410,16 +432,27 @@ function settings({ prefs, ui, recorder, crowd, audio, song }) {
     c = prefs.catalog,
     view = ui.settings;
   const fx = (k, label, max = 1) => slider('fx.' + k, label, e[k], 0, max, 0.01, c);
+  const display = { ...d, ...ui.displayEdits };
   let body = '';
   if (view === 'Display')
     body =
-      select('targetFps', 'Frame-rate target', d.targetFps, [
+      '<div data-display-preferences>' +
+      select('targetFps', 'Frame-rate target', display.targetFps, [
         [30, '30 FPS'],
         [60, '60 FPS'],
       ]) +
-      check('adaptiveQuality', 'Adaptive quality', d.adaptiveQuality) +
-      check('batterySaver', 'Battery saver', d.batterySaver) +
-      check('tabletMonitor', 'Timing monitor', d.tabletMonitor) +
+      check('adaptiveQuality', 'Adaptive quality', display.adaptiveQuality) +
+      check('batterySaver', 'Battery saver', display.batterySaver) +
+      check('tabletMonitor', 'Timing monitor', display.tabletMonitor) +
+      (Object.keys(ui.displayEdits).length
+        ? actions(btn('cancel-display', 'Cancel'), btn('apply-display', 'Apply', 'class="action-main"'))
+        : '') +
+      '</div>' +
+      actions(
+        '<button type="button" id="rainbow-effect" data-konami-toggle aria-pressed="' +
+          document.documentElement.classList.contains('psychedelic') +
+          '">Rainbow effect</button>'
+      ) +
       '<p id="render-stats" class="info"></p>' +
       group(
         'Offline app',

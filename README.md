@@ -4,11 +4,13 @@
 
 An audio-reactive visualizer for Android and the web. Four patterns share geometry, color controls, and beat-driven effects. A portable Windows controller can synchronize a crowd show.
 
-[Download prism 1.16.1](https://github.com/xklob/prism/releases/tag/v1.16.1) for the standalone web bundle, signed Android APK, and Windows controller. The [web guide](web/README.md) covers running it on localhost or your own HTTPS host.
+[Open prism in your browser](https://prism.klob.io/) or [download prism 1.16.2](https://github.com/xklob/prism/releases/tag/v1.16.2) for Android, Windows, or self-hosting.
 
 ## Web app
 
-Extract the web ZIP and run `node serve.mjs --open` in the extracted directory. On Windows, the controller ZIP includes Node.js and a **Start-prism-web.cmd** launcher. Both packages include the patterns, beat models, and offline assets.
+The hosted visualizer is a static site. Open it on a phone, tablet, or desktop. Local tracks play and are analyzed in your browser.
+
+To self-host, extract the web ZIP and run `node serve.mjs --open` in the extracted directory. On Windows, the controller ZIP includes Node.js and a **Start-prism-web.cmd** launcher. Both packages include the patterns, beat models, and offline assets.
 
 ![prism web with the Wormhole pattern and its color controls](docs/screenshots/web-desktop.webp)
 
