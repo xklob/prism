@@ -24,7 +24,7 @@ class LocalTimingMap(val frames: List<LocalFrame>, val duration: Double) {
             val expected = previous?.let { it.rhythm.position + (raw.timestamp - it.time) * it.rhythm.bpm / 60 }
             val shift = expected?.let { round(it - raw.position).toInt() } ?: 0
             val aligned = raw.copy(position = raw.position + shift,
-                barOffset = Math.floorMod(raw.barOffset + shift, raw.beatsPerBar))
+                barOffset = floorMod(raw.barOffset + shift, raw.beatsPerBar))
             selected.add(Anchor(raw.timestamp, aligned, frame.phrase))
         }
         anchors = selected
@@ -65,7 +65,7 @@ class LocalTimingMap(val frames: List<LocalFrame>, val duration: Double) {
         val phrase = if (origin == null) PhraseState(message = "Phrase boundary unresolved") else {
             val originBar = floor((origin.rhythm.position - origin.rhythm.barOffset) / result.beatsPerBar).toLong() - (origin.phrase.bar!! - 1)
             val currentBar = floor((position - result.barOffset) / result.beatsPerBar).toLong()
-            PhraseState(origin.phrase.bars, Math.floorMod(currentBar - originBar, origin.phrase.bars.toLong()).toInt() + 1,
+            PhraseState(origin.phrase.bars, floorMod(currentBar - originBar, origin.phrase.bars.toLong()).toInt() + 1,
                 minOf(origin.phrase.confidence, result.barConfidence), message = "Phrase estimated from full-track analysis")
         }
         return LocalTiming(result, phrase)
@@ -78,7 +78,7 @@ class LocalTimingMap(val frames: List<LocalFrame>, val duration: Double) {
             val r = timing.rhythm
             val old = previous
             if (r.locked && old?.locked == true && floor(r.position) == floor(old.position) + 1 && r.position - old.position < .5) {
-                val downbeat = r.barLocked && Math.floorMod(floor(r.position).toInt() - r.barOffset, r.beatsPerBar) == 0
+                val downbeat = r.barLocked && floorMod(floor(r.position).toInt() - r.barOffset, r.beatsPerBar) == 0
                 val kind = if (downbeat && timing.phrase.bar == 1) 2 else if (downbeat) 1 else 0
                 result.add(LocalMarker((frame.time - (r.position - floor(r.position)) * 60 / r.bpm).coerceAtLeast(0.0), kind))
             }

@@ -4,10 +4,10 @@ Run a small crowd show using a Windows laptop's Wi-Fi card. The controller start
 
 ## Start a show
 
-1. Install the **prism 1.10.0 APK** on each Android phone.
+1. For browser participants, use the full controller ZIP, which includes the web app. For native participants, install the current prism APK on the Android phones.
 2. Extract the complete **Windows x64 controller ZIP** into a folder you can write to. Double-click **Start-Prism.cmd**.
-3. Windows requests administrator access to allow the controller's UDP port through its firewall. The launcher preserves your existing hotspot name and password and turns the hotspot on.
-4. Scan the dashboard's **Audience** invitation with the phone's camera and open prism. Tap **Join show**. Android can ask to connect to the hotspot for this app. Alternatively, join the hotspot in Android Settings, paste the invitation into **Join crowd show**, and turn off **Ask Android to join the hotspot**.
+3. Windows requests administrator access to allow the controller’s UDP and TCP participant port through its firewall. The launcher preserves your existing hotspot name and password and turns the hotspot on.
+4. On the dashboard, choose **Audience** and select **Web app** or **Android app**. Browser participants join the hotspot in Wi-Fi settings, scan the web QR, then tap **Join show**. Native participants scan the Android QR, open prism, and tap **Join show**. Android can request the hotspot connection, or you can join it in Wi-Fi settings and paste the invitation into prism.
 5. Wait for **Ready**, then click **Start show** on the laptop. The initial diagnostic is a 50 ms white flash on beat 1 of each bar at 120 BPM. Choose quarter notes for more frequent timing checks.
 6. For patterns, select **prism scene**, choose Kaleido, Wormhole, Mandelbrot, or Kaleidoscope, then click **Queue settings**. Changes take effect at a shared future boundary. **Blackout** takes effect as soon as each phone receives it.
 
@@ -23,9 +23,19 @@ Windows may require an active Wi-Fi or Ethernet connection profile before Mobile
 
 The packaged controller includes Node.js 24 for Windows x64 and its runtime dependencies. No Node installation or development tools are needed. If Windows blocks a downloaded ZIP, open the ZIP's Properties and unblock it before extracting.
 
-The firewall rule **prism crowd timing** allows only the controller executable's UDP port, **48761**, from the local subnet. The dashboard listens only on the laptop's loopback address, port **48760**. Restart the launcher after moving the controller folder so the rule follows its executable.
+The Windows firewall rules allow the controller executable to accept native UDP and browser TCP connections at port **48761** from the local subnet. The administrative dashboard listens on the laptop’s loopback address at port **48760**. If you select that port for participants, the launcher opens the dashboard at a free loopback port. Restart the launcher after moving the controller folder so the rules follow its executable.
 
-For an existing network, run **Start-Prism.cmd -NoHotspot** and choose the correct local interface in the dashboard. **-Inspect** reports hotspot support and capacity without changing the network. **-NoFirewall** skips rule creation when a suitable rule already exists. **-Port** changes the UDP port.
+For an existing network, run **Start-Prism.cmd -NoHotspot** and choose the correct local interface in the dashboard. **-Inspect** reports hotspot support and capacity without changing the network. **-NoFirewall** skips rule creation when a suitable rule already exists. **-Port** changes the shared participant port for TCP and UDP.
+
+## Join from a browser
+
+Controller 0.5.0 and newer can run a mixed show with browsers and Android apps. The controller serves the bundled visualizer from its own Wi-Fi address. The web QR opens that local app with the invitation in the URL fragment, so the show can start offline. Browser participants join the Wi-Fi through system settings. Participants can also paste either platform’s invitation into the web app. Keep the visualizer open in the foreground. After switching tabs it acquires fresh timing before enabling accents.
+
+The audience client verifies each schedule and clock reply with the signing key pinned in the invitation. On ordinary LAN HTTP it uses the bundled noble P-256 verifier. On HTTPS and localhost it uses Web Crypto. It applies the same cues, confidence limits, and two-second expiry as the native app. Participants can dim or blank their visual and disable flashes and inversion.
+
+The **Audio input phone** role shares detected timing. Browsers require a trusted HTTPS origin or localhost for microphone and tab/system capture. To serve the app and timing endpoint over HTTPS, set **PRISM_TLS_CERT** and **PRISM_TLS_KEY** to the paths to a PEM certificate chain and private key before starting the controller. The certificate must cover the advertised local IP address and be trusted by participant devices. HTTPS also authenticates the downloaded app itself. On plain HTTP, use a trusted show network.
+
+For a separate self-hosted deployment, set **PRISM_WEB_URL** to the full HTTPS app address before starting the controller. A localhost HTTP URL also works for development on the laptop. The timing endpoint accepts the configured origin and the selected local app origin. Current Chromium browsers may ask for local network permission when a separately hosted page accesses a private controller. Self-hosters can point **PRISM_APP_DIR** at another complete built web bundle containing its generated **prism-files.json** list. [Chromium local network access](https://developer.chrome.com/blog/local-network-access)
 
 ## Use microphone or system audio
 
@@ -41,7 +51,7 @@ Network synchronization cannot repair an incorrect musical beat or bar estimate.
 
 ## Timing and loss behavior
 
-The laptop is the authoritative clock. Phones estimate its offset and drift from repeated four-timestamp UDP exchanges, preferring samples with less network queuing. They never change Android's system clock. Each phone receives its own copy of the same signed schedule; there is no dependency on multicast support.
+The laptop is the authoritative clock. Participants estimate its offset and drift from repeated four-timestamp exchanges, preferring samples with less network queuing. Android uses UDP and browsers use signed HTTP exchanges. They never change Android's system clock. Each phone receives its own copy of the same signed schedule; there is no dependency on multicast support.
 
 Regular setting changes are scheduled at least one second ahead, usually on the next bar. Audio estimates also become future timeline segments. Edits are frozen in the final 250 ms before activation. Phones sample absolute flash and inversion envelopes at their predicted display presentation time, so a late frame cannot restart an expired flash.
 
@@ -68,7 +78,7 @@ npm start
 
 For another network, set **PRISM_HOST** to the controller's local IPv4 address. Optional environment variables are **PRISM_UDP_PORT**, **PRISM_HTTP_PORT**, **PRISM_HOTSPOT_LIMIT**, **PRISM_WIFI_SSID**, and **PRISM_WIFI_PASSWORD**. Avoid putting real invitation credentials or hotspot passwords in checked-in files.
 
-Controller tests cover future activation, tempo continuity, tap/bar alignment, input expiry, malformed commands, signed packet tampering, role separation, and fifty simultaneous UDP clients. Android unit tests cover clock offset/drift, slow/asymmetric paths, several refresh rates, missed windows, backward corrections, cue boundaries, and confidence loss.
+Controller tests cover browser invitation fragments, origin and role checks, Web Crypto verification against UDP schedules, source ownership, future activation, tempo continuity, tap/bar alignment, input expiry, malformed commands, signed packet tampering, role separation, and fifty simultaneous UDP clients. Android unit tests cover clock offset/drift, slow/asymmetric paths, several refresh rates, missed windows, backward corrections, cue boundaries, and confidence loss.
 
 To exercise Android against a real controller process, run **node test/android-harness.ts** on the emulator's host. It writes temporary invitations to **runtime/android-test.json**; the default emulator host address is **10.0.2.2**, adjustable with **PRISM_TEST_HOST**. Pass the base64url **invite** as the **crowdInvite** instrumentation argument to **CrowdDeviceTest#signedShowJoinsRendersResumesAndLeavesWithoutMicrophoneCapture**. For the source bridge test, first choose audio timing on the dashboard and pass **sourceInvite** as **crowdSourceInvite** to **CrowdDeviceTest#sourceBridgeConvertsAndroidTimestampsIntoTheControllerClock**. The source test uses synthetic timing, not a real microphone recording.
 
@@ -77,3 +87,5 @@ See the main README for Android build and instrumentation setup. Physical multi-
 Windows references: [Mobile Hotspot](https://support.microsoft.com/en-us/windows/experience/connectivity-networking/use-your-windows-device-as-a-mobile-hotspot), [reported client capacity](https://learn.microsoft.com/en-us/uwp/api/windows.networking.networkoperators.networkoperatortetheringmanager.maxclientcount).
 
 Mandelbrot requires prism 1.9 or newer on audience devices. The available patterns are Kaleido, Wormhole, Mandelbrot, and Kaleidoscope. Removed pattern IDs are rejected by controller 0.4.0.
+
+The Windows ZIP also includes **Start-prism-web.cmd**. Double-click it to open the standalone visualizer on localhost with the bundled Node runtime. This launcher works without starting a hotspot.

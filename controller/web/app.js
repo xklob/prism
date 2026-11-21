@@ -2,7 +2,7 @@ const token = location.hash.slice(1) || sessionStorage.getItem('prismAdmin') || 
 if (token) sessionStorage.setItem('prismAdmin', token);
 history.replaceState(null, '', location.pathname);
 const $ = id => document.getElementById(id);
-let role = 'viewer', host = '', historySamples = [];
+let role = 'viewer', host = '', historySamples = [], invitationRequest = 0;
 const dirty = new Set();
 const numeric = ['bpm','meter','phraseBars','scene','palette','flashEvery','flashMs','invertMs',
   'speed','intensity','complexity','symmetry','distortion','zoom','hue','rotation','colorSpeed','morph'];
@@ -34,16 +34,21 @@ async function command(body) {
   catch (error) { $('error').textContent = error.message; return false; }
 }
 async function invitation() {
+  const request = ++invitationRequest, platform = $('platform').value;
+  $('qr').removeAttribute('src'); $('invite').value = ''; $('roleHelp').textContent = '';
   try {
-    const data = await api('join?role=' + role);
+    const data = await api('join?role=' + role + '&platform=' + platform);
+    if (request !== invitationRequest) return;
     $('qr').src = data.qr; $('invite').value = data.link;
-    $('roleHelp').textContent = role === 'source'
-      ? 'For the VJ only: join, then connect microphone or system audio in prism.'
-      : 'Scan with your phone camera and open prism. Or paste the invitation into Crowd in prism.';
+    $('roleHelp').textContent = platform === 'web'
+      ? (role === 'source' ? 'For the VJ only. ' : '') + 'Join the show Wi-Fi, scan to open prism in a browser, then select Join show.'
+      : role === 'source' ? 'For the VJ only. Join, then connect microphone or system audio in prism.'
+        : 'Scan with your phone camera and open prism, or paste the invitation into Crowd in prism.';
     $('viewers').classList.toggle('primary',role === 'viewer');
     $('audioRole').classList.toggle('primary',role === 'source');
   } catch (error) { $('error').textContent = error.message; }
 }
+$('platform').onchange = invitation;
 $('viewers').onclick = () => { role = 'viewer'; invitation(); };
 $('audioRole').onclick = () => { role = 'source'; invitation(); };
 for (const action of ['start','blackout','tap','align']) $(action).onclick = async () => {

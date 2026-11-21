@@ -1,0 +1,23 @@
+prism
+
+Extract this ZIP before opening the app.
+
+With Node.js installed, run this command in the extracted folder.
+
+    node serve.mjs --open
+
+With Python 3, run the following command and open http://127.0.0.1:4173/.
+
+    python3 -m http.server 4173 --bind 127.0.0.1
+
+For your own site, serve this directory at its root or a subpath over HTTPS.
+Preserve the file layout. Serve .mjs as text/javascript and .wasm as application/wasm.
+The service worker caches the entire app, including the beat models, on first load.
+Open the app once and let offline setup finish before disconnecting.
+
+On Windows, the separate prism crowd controller ZIP includes the web app and
+Node.js. Start-prism-web.cmd opens the standalone app locally. Start-Prism.cmd
+opens the hotspot controller and lets other devices join using a web QR code.
+
+Select a pattern to start. In Audio, choose a local file to analyze and play,
+or connect a supported live input. Microphone and tab capture need HTTPS or localhost.

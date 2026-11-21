@@ -2,9 +2,17 @@
 
 <img src="docs/icon.svg" width="96" alt="prism RGB mandala icon">
 
-A native Android psychedelic visualizer. Kotlin, Jetpack Compose, and four OpenGL ES 3 patterns. Android 10 or newer.
+An audio-reactive visualizer for Android and the web. Four patterns share geometry, color controls, and beat-driven effects. A portable Windows controller can synchronize a crowd show.
 
-[Download prism 1.15.0](https://github.com/xklob/prism/releases/tag/v1.15.0) for local-file playback with full-track timing analysis and an optional waveform. It also includes optional Spotify compatibility through Shizuku, native-size recording where supported, and four visual patterns.
+[Download prism 1.16.0](https://github.com/xklob/prism/releases/tag/v1.16.0) for the standalone web bundle, signed Android APK, and Windows controller. The [web guide](web/README.md) covers running it on localhost or your own HTTPS host.
+
+## Web app
+
+Extract the web ZIP and run `node serve.mjs --open` in the extracted directory. On Windows, the controller ZIP includes Node.js and a **Start-prism-web.cmd** launcher. Both packages include the patterns, beat models, and offline assets.
+
+![prism web with the Wormhole pattern and its color controls](docs/screenshots/web-desktop.webp)
+
+This is an actual desktop Chromium capture of the standalone app in ambient mode. The [web feature guide](web/README.md) covers local playback, live audio, recording, saved looks, timing diagnostics, and browser capture support.
 
 ## Screenshots
 
@@ -36,7 +44,7 @@ These two views are unedited 1.12 Android 16 emulator captures with bloom and bl
 
 ## Crowd mode
 
-prism includes a Windows controller that uses the computer's own Wi-Fi card through Mobile Hotspot. Install the APK on the phones, extract the Windows controller ZIP from the [release](https://github.com/xklob/prism/releases/latest), and double-click **Start-Prism.cmd**. The local dashboard provides audience invitations, a shared tempo and bar clock, four geometric patterns, scheduled flashes and color inversion, and per-phone timing diagnostics.
+prism includes a Windows controller that uses the computer's own Wi-Fi card through Mobile Hotspot. Install the APK on the phones or use the browser invitation, extract the Windows controller ZIP from the [release](https://github.com/xklob/prism/releases/latest), and double-click **Start-Prism.cmd**. The local dashboard provides audience invitations, a shared tempo and bar clock, four geometric patterns, scheduled flashes and color inversion, and per-phone timing diagnostics.
 
 See [the controller guide](controller/README.md) for setup, audio input, timing limits, and testing. Physical multi-phone timing and the laptop's adapter and firewall setup still need field testing. Software clock estimates do not establish physical synchronization between different phone screens.
 
@@ -254,6 +262,8 @@ The debug APK is in `app/build/outputs/apk/debug/` and uses package `com.caleb.p
 ```
 
 ## Verification
+
+Version 1.16.0 adds the self-hostable web app and signed browser crowd participation. See the [release notes](docs/releases/1.16.0.md) for browser, controller, and Android checks.
 
 Version 1.15.0 passed 100 JVM tests and release build/lint. Local-file device checks cover Android file selection, complete analysis before playback, the expected 128 BPM musical fixture, 44.1 kHz conversion, mono AAC and stereo WAV, uncertain sustained tones, cancellation, invalid files, waveform seeking, playback pause/resume and end, background playback, and stereo soundtrack recording without microphone access. Phone/tablet layout and signed-build checks are documented in [the release notes](docs/releases/1.15.0.md). Physical playback latency and real-song phrase accuracy remain unverified.
 

@@ -92,6 +92,8 @@ if (-not (Test-Path (Join-Path $controllerRoot 'node_modules/qrcode'))) {
 }
 if (-not $NoFirewall) {
     Get-NetFirewallRule -Name 'Prism-Crowd-UDP' -ErrorAction SilentlyContinue | Remove-NetFirewallRule
+    Get-NetFirewallRule -Name 'Prism-Crowd-TCP' -ErrorAction SilentlyContinue | Remove-NetFirewallRule
+    New-NetFirewallRule -Name 'Prism-Crowd-TCP' -DisplayName 'prism browser crowd timing' -Direction Inbound -Action Allow -Protocol TCP -LocalPort $Port -RemoteAddress LocalSubnet -Program $node -Profile Any | Out-Null
     New-NetFirewallRule -Name 'Prism-Crowd-UDP' -DisplayName 'prism crowd timing' -Direction Inbound -Action Allow -Protocol UDP -LocalPort $Port -RemoteAddress LocalSubnet -Program $node -Profile Any | Out-Null
 }
 $startedHotspot = $false

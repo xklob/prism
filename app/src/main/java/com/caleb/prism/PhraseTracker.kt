@@ -68,7 +68,7 @@ class PhraseTracker {
         sums[0] += levels.energy; sums[1] += levels.bass; sums[2] += levels.mid; sums[3] += levels.high
         frames++
         val origin = anchor ?: return PhraseState(bars = bars, message = "Listening for a phrase change")
-        return PhraseState(bars, Math.floorMod(index - origin, bars.toLong()).toInt() + 1,
+        return PhraseState(bars, floorMod(index - origin, bars.toLong()).toInt() + 1,
             (confidence * min(timing.confidence, timing.barConfidence)).toFloat(), manual,
             if (manual) "Phrase aligned manually" else if (guided) "Phrase guided by manual alignment" else "Phrase estimated from audio changes", guided)
     }
@@ -88,7 +88,7 @@ class PhraseTracker {
                 val origin = anchor
                 if (origin == null) { anchor = index; confidence = .30 }
                 else {
-                    val phase = Math.floorMod(index - origin, bars.toLong())
+                    val phase = floorMod(index - origin, bars.toLong())
                     if (phase == 0L) confidence = (confidence + .16).coerceAtMost(.78)
                     else if (phase != 1L && phase != bars - 1L) { anchor = index; confidence = .30 }
                 }

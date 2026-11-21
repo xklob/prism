@@ -29,7 +29,7 @@ data class RhythmState(
 ) {
     val locked: Boolean get() = bpm > 0f && confidence >= 0.5f
     fun positionAt(time: Double) = position + (time-timestamp).coerceIn(-0.5,0.5)*bpm/60.0
-    fun beatInBar(time: Double): Int = Math.floorMod(floor(positionAt(time)+1e-7).toInt()-barOffset, beatsPerBar)+1
+    fun beatInBar(time: Double): Int = floorMod(floor(positionAt(time)+1e-7).toInt()-barOffset, beatsPerBar)+1
 }
 
 /** Causal tempo/phase estimation, using either isolated onsets or complete repeating envelopes.
@@ -301,7 +301,7 @@ class RhythmTracker(usePeriodicity: Boolean=false) {
                 var score=0.0
                 val support=mutableListOf<Int>()
                 for (event in barEvidence.values) {
-                    val first=Math.floorMod(event.index-offset,beats)==0
+                    val first=floorMod(event.index-offset,beats)==0
                     val weight=event.weight*exp(-(index-event.index)/24.0)
                     score+=weight*ln(if (first) event.probability else 1-event.probability)
                     if (first && event.probability > 0.55 && event.weight > 0.25) support.add(event.index)
@@ -322,7 +322,7 @@ class RhythmTracker(usePeriodicity: Boolean=false) {
         // The first returning beat need not re-prove several measures when it agrees with
         // the retained bar. Contradictory downbeats still invalidate that prediction.
         if (barLocked && index <= resumeBarThrough && certainty < .68 && latest != null &&
-            (if (Math.floorMod(index-barOffset,meter) == 0) latest.probability >= .55 else latest.probability <= .45)) return
+            (if (floorMod(index-barOffset,meter) == 0) latest.probability >= .55 else latest.probability <= .45)) return
         barConfidence=certainty
         if (certainty >= 0.68) { meter=winner.meter; barOffset=winner.offset; barLocked=true }
         else if (certainty < 0.38 || winner.meter != meter || winner.offset != barOffset) barLocked=false
@@ -376,7 +376,7 @@ class RhythmTracker(usePeriodicity: Boolean=false) {
         if (!fitted) return
         val index=round((time-origin)/period).toInt()
         origin=time-index*period
-        barOffset=Math.floorMod(index,meter); manualBar=true; barLocked=true; barConfidence=1.0
+        barOffset=floorMod(index,meter); manualBar=true; barLocked=true; barConfidence=1.0
         clearBarWindow()
     }
 

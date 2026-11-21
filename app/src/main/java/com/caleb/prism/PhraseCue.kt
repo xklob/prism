@@ -26,7 +26,7 @@ internal class PhraseCue {
             phrase.confidence >= .55f && phrase.bar != null && phrase.bar in 1..phrase.bars && r.beatsPerBar in 3..4
         if (!ready) { reset(); message = if (!running) "Connect audio to cue on a phrase" else "Waiting for a stable phrase grid"; return false }
         val barIndex = floor((r.position - r.barOffset) / r.beatsPerBar).toLong()
-        val origin = Math.floorMod(barIndex - (phrase.bar!! - 1), phrase.bars.toLong())
+        val origin = floorMod(barIndex - (phrase.bar!! - 1), phrase.bars.toLong())
         val key = "$revision:${r.beatsPerBar}:${r.barOffset}:${phrase.bars}:$origin"
         val position = r.positionAt(now + offsetMs / 1000.0)
         val dt = now - previousNow
