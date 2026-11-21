@@ -8,6 +8,22 @@ const open = async (page) => {
   await page.goto('./');
   await button(page, 'Wormhole').waitFor();
 };
+const observeRecording = (page) =>
+  page.addInitScript(() => {
+    const NativeRecorder = window.MediaRecorder;
+    window.MediaRecorder = class extends NativeRecorder {
+      constructor(...args) {
+        super(...args);
+        window.encodedChunks = 0;
+        this.addEventListener('dataavailable', ({ data }) => {
+          if (data.size) window.encodedChunks++;
+        });
+      }
+    };
+  });
+const waitForRecording = (page) =>
+  expect.poll(() => page.evaluate(() => window.encodedChunks), { timeout: 20000 }).toBeGreaterThanOrEqual(2);
+
 test('the graphics error leaves audio and playback controls accessible', async ({ page }) => {
   await page.addInitScript(() => {
     const getContext = HTMLCanvasElement.prototype.getContext;
@@ -67,6 +83,7 @@ test('pattern tuning, saved looks, transitions, effects, themes and fit on a pho
 test('local analysis, playback, waveform seeking, soundtrack recording and diagnostic export', async ({
   page,
 }, testInfo) => {
+  await observeRecording(page);
   await open(page);
   await tab(page, 'Audio').click();
   await page.getByLabel('Source', { exact: true }).selectOption('file');
@@ -84,14 +101,16 @@ test('local analysis, playback, waveform seeking, soundtrack recording and diagn
   await button(page, 'Record session').click();
   await expect(page.getByLabel('Source', { exact: true })).toBeDisabled();
   await expect(button(page, 'Forward 10 seconds')).toBeDisabled();
-  await page.waitForTimeout(1800);
-  const saved = page.waitForEvent('download');
+  await waitForRecording(page);
   await button(page, 'Stop recording').click();
+  await expect(page.getByLabel('Source', { exact: true })).toBeEnabled();
+  await tab(page, 'Settings').click();
+  await expect(page.locator('#last-video')).toBeVisible();
+  const saved = page.waitForEvent('download');
+  await page.locator('#last-video').click();
   const video = await saved;
   expect(video.suggestedFilename()).toMatch(/\.(mp4|webm)$/);
   await video.saveAs(testInfo.outputPath('recording.' + video.suggestedFilename().split('.').at(-1)));
-  await button(page, 'Pause track').click();
-  await tab(page, 'Settings').click();
   await button(page, 'Diagnostics').click();
   await button(page, 'Freeze').click();
   const csvEvent = page.waitForEvent('download');
@@ -132,19 +151,10 @@ test('microphone connects, pattern switch disconnects, and offline reload can an
 test('tab sharing handles cancelled, video-only and revoked grants without recording shared pixels', async ({
   page,
 }, testInfo) => {
+  await observeRecording(page);
   // Synthetic display picker. A real desktop picker requires the browser's native consent dialog.
   await page.addInitScript(() => {
     window.shareMode = 'cancel';
-    const NativeRecorder = window.MediaRecorder;
-    window.MediaRecorder = class extends NativeRecorder {
-      constructor(...args) {
-        super(...args);
-        window.encodedChunks = 0;
-        this.addEventListener('dataavailable', (event) => {
-          if (event.data.size) window.encodedChunks++;
-        });
-      }
-    };
     navigator.mediaDevices.getDisplayMedia = async () => {
       if (window.shareMode === 'cancel') throw new DOMException('Cancelled', 'NotAllowedError');
       const surface = (window.fixtureSurface = document.createElement('canvas'));
@@ -189,9 +199,7 @@ test('tab sharing handles cancelled, video-only and revoked grants without recor
   await expect.poll(() => page.locator('#level').evaluate((el) => el.value)).toBeGreaterThan(0.1);
   await button(page, 'Record session').click();
   await expect(button(page, 'Stop recording')).toBeVisible();
-  await expect
-    .poll(() => page.evaluate(() => window.encodedChunks), { timeout: 20000 })
-    .toBeGreaterThanOrEqual(2);
+  await waitForRecording(page);
   await page.evaluate(() => window.fixtureStream.getAudioTracks()[0].dispatchEvent(new Event('ended')));
   await expect(button(page, 'Record session')).toBeVisible();
   await expect(page.locator('#audio-status')).toContainText('Input ended');
