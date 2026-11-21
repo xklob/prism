@@ -166,7 +166,7 @@ async function receive(message) {
       if (mode === 'file') await analyzeFile(message.channels);
       return;
     case 'sample':
-      if (mode === 'file') frame(analyzer.sample(message.position, message.now));
+      if (mode === 'file') frame({ ...analyzer.sample(message.position, message.now), epoch: message.epoch });
       return;
     case 'options':
       configure(message.options);

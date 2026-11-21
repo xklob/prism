@@ -58,6 +58,7 @@ test('local analysis, playback, waveform seeking, soundtrack recording and diagn
   await expect(page.locator('#controls')).toContainText('128 BPM');
   await button(page, 'Play track').click();
   await expect(button(page, 'Pause track')).toBeVisible();
+  await expect.poll(() => page.locator('#track-time').textContent()).not.toMatch(/^0:00 /);
   await page.getByLabel('Track waveform', { exact: true }).check();
   const wave = page.locator('#wave');
   await wave.focus();
@@ -117,9 +118,19 @@ test('tab sharing handles cancelled, video-only and revoked grants without recor
   // Synthetic display picker. A real desktop picker requires the browser's native consent dialog.
   await page.addInitScript(() => {
     window.shareMode = 'cancel';
+    const NativeRecorder = window.MediaRecorder;
+    window.MediaRecorder = class extends NativeRecorder {
+      constructor(...args) {
+        super(...args);
+        window.capturedBytes = 0;
+        this.addEventListener('dataavailable', (event) => {
+          window.capturedBytes += event.data.size;
+        });
+      }
+    };
     navigator.mediaDevices.getDisplayMedia = async () => {
       if (window.shareMode === 'cancel') throw new DOMException('Cancelled', 'NotAllowedError');
-      const surface = document.createElement('canvas');
+      const surface = (window.fixtureSurface = document.createElement('canvas'));
       surface.width = 32;
       surface.height = 32;
       const painted = surface.getContext('2d');
@@ -160,15 +171,16 @@ test('tab sharing handles cancelled, video-only and revoked grants without recor
   await expect(page.locator('#audio-status')).toHaveText('Listening');
   await expect.poll(() => page.locator('#level').evaluate((el) => el.value)).toBeGreaterThan(0.1);
   await button(page, 'Record session').click();
-  await page.waitForTimeout(1000);
-  const download = page.waitForEvent('download');
+  await expect(button(page, 'Stop recording')).toBeVisible();
+  await expect.poll(() => page.evaluate(() => window.capturedBytes), { timeout: 20000 }).toBeGreaterThan(0);
   await page.evaluate(() => window.fixtureStream.getAudioTracks()[0].dispatchEvent(new Event('ended')));
-  await download;
+  await expect(button(page, 'Record session')).toBeVisible();
   await expect(page.locator('#audio-status')).toContainText('Input ended');
   expect(
     await page.evaluate(() => window.fixtureStream.getTracks().every((t) => t.readyState === 'ended'))
   ).toBe(true);
   await tab(page, 'Settings').click();
+  await expect(page.locator('#view-video')).toBeVisible();
   const pixels = await page.locator('#view-video').evaluate(async (link) => {
     const video = document.createElement('video');
     video.muted = true;

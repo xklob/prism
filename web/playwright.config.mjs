@@ -21,6 +21,14 @@ export default defineConfig({
       ],
     },
   },
+  projects: [
+    { name: 'chromium', testIgnore: '**/playback.spec.mjs', use: { browserName: 'chromium' } },
+    ...['firefox', 'webkit'].map((browserName) => ({
+      name: browserName,
+      testMatch: '**/playback.spec.mjs',
+      use: { browserName, launchOptions: { args: [] } },
+    })),
+  ],
   webServer: {
     command: 'node scripts/serve.mjs',
     url: 'http://127.0.0.1:4173/',

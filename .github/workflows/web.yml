@@ -23,6 +23,7 @@ jobs:
             controller/package-lock.json
       - run: npm ci --prefix controller && npm run check --prefix controller && npm test --prefix controller
       - run: npm ci --prefix web && npm run build --prefix web && npm test --prefix web
-      - run: npx playwright install --with-deps chromium
+      - run: npx playwright install --with-deps chromium firefox webkit
         working-directory: web
       - run: npm run test:browser --prefix web
+      - run: npm run test:playback --prefix web

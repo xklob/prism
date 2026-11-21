@@ -56,4 +56,4 @@ npx playwright install chromium
 npm run test:browser
 ```
 
-The local tests use original synthetic audio. Model provenance and licenses are included in the deployment under `dsp/`. The web package also includes the Space Grotesk OFL and licenses for the browser signature verifier.
+For the Firefox and WebKit playback regression, install their Playwright browsers with `npx playwright install --with-deps firefox webkit` and run `npm run test:playback`. The local tests use original synthetic audio. Model provenance and licenses are included in the deployment under `dsp/`. The web package also includes the Space Grotesk OFL and licenses for the browser signature verifier.

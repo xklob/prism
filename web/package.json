@@ -10,7 +10,8 @@
     "build": "node scripts/build.mjs",
     "start": "node scripts/serve.mjs",
     "test": "node --test test/*.test.mjs",
-    "test:browser": "playwright test"
+    "test:browser": "playwright test --project=chromium",
+    "test:playback": "playwright test --project=firefox --project=webkit"
   },
   "dependencies": {
     "@fontsource-variable/space-grotesk": "5.3.0",

@@ -2,15 +2,16 @@ const now = () => performance.now() / 1000;
 export const sourceNames = { microphone: 'Microphone', system: 'Tab / system audio', file: 'Local file' };
 
 export class AudioSession extends EventTarget {
-  constructor(options, onPcm) {
+  constructor(options, onPcm, finishRecording) {
     super();
     this.options = options;
     this.onPcm = onPcm;
-    this.player = new Audio();
-    this.player.preload = 'metadata';
-    this.player.addEventListener('ended', () => this.playbackChanged());
-    this.player.addEventListener('pause', () => this.playbackChanged());
-    this.player.addEventListener('play', () => this.playbackChanged());
+    this.finishRecording = finishRecording;
+    this.buffer = null;
+    this.voice = null;
+    this.offset = 0;
+    this.startedAt = 0;
+    this.fileRevision = 0;
     this.generation = 0;
     this.phase = 'idle';
     this.source = null;
@@ -29,10 +30,12 @@ export class AudioSession extends EventTarget {
     return this.phase === 'live' || this.phase === 'file-ready';
   }
   get playing() {
-    return this.source === 'file' && this.active && !this.player.paused;
+    return this.source === 'file' && this.active && this.voice !== null;
   }
   get position() {
-    return this.source === 'file' ? this.player.currentTime || 0 : 0;
+    if (this.source !== 'file') return 0;
+    const elapsed = this.voice ? this.context.currentTime - this.startedAt : 0;
+    return Math.min(this.duration, this.offset + Math.max(0, elapsed));
   }
   get duration() {
     return this.track?.duration || 0;
@@ -42,13 +45,13 @@ export class AudioSession extends EventTarget {
     if (!session) return;
     for (const [action, handler] of Object.entries({
       play: () => this.play().catch(() => {}),
-      pause: () => this.player.pause(),
+      pause: () => this.pause(),
       seekbackward: (e) => this.seek(this.position - (e.seekOffset || 10)),
       seekforward: (e) => this.seek(this.position + (e.seekOffset || 10)),
       seekto: (e) => this.seek(e.seekTime),
       previoustrack: () => this.seek(0),
       stop: () => {
-        this.player.pause();
+        this.pause();
         this.seek(0);
       },
     }))
@@ -135,16 +138,24 @@ export class AudioSession extends EventTarget {
       t.stop();
     });
     this.stream = null;
-    this.player.pause();
-    this.player.removeAttribute('src');
-    this.player.load();
-    if (this.url) URL.revokeObjectURL(this.url);
-    this.url = null;
-    this.recordBus?.disconnect();
-    this.recordBus?.stream.getTracks().forEach((track) => track.stop());
-    this.recordBus = null;
-    if (this.context) this.context.close().catch(() => {});
-    this.context = null;
+    this.stopVoice();
+    this.buffer = null;
+    this.offset = 0;
+    this.fileRevision++;
+    this.cancelProbe?.();
+    this.cancelProbe = null;
+    const bus = this.recordBus,
+      ctx = this.context;
+    this.recordBus = this.context = null;
+    if (ctx) ctx.onstatechange = null;
+    // Revoke capture immediately above. Keep the original audio track alive until
+    // the recorder has finished writing its final packet on slower encoders.
+    const flushed = this.finishRecording?.();
+    Promise.resolve(flushed).then(() => {
+      bus?.disconnect();
+      bus?.stream.getTracks().forEach((track) => track.stop());
+      ctx?.close().catch(() => {});
+    });
     if (navigator.mediaSession) {
       navigator.mediaSession.metadata = null;
       navigator.mediaSession.playbackState = 'none';
@@ -194,7 +205,6 @@ export class AudioSession extends EventTarget {
         if (this.generation !== generation) return;
         this.startReject = null;
         reject(new Error(message));
-        this.dispatchEvent(new Event('inputlost'));
         this.stop(message);
       };
       worker.onerror = (event) => error(event.message || 'The audio analysis engine could not load.');
@@ -221,7 +231,7 @@ export class AudioSession extends EventTarget {
             break;
           case 'frame':
             this.pending = Math.max(0, this.pending - 1);
-            if (this.source === 'file' && !this.playing) break;
+            if (this.source === 'file' && (!this.playing || data.epoch !== this.fileRevision)) break;
             this.frame = data;
             this.dispatchEvent(new CustomEvent('frame', { detail: data }));
             break;
@@ -272,7 +282,6 @@ export class AudioSession extends EventTarget {
         for (const track of stream.getTracks())
           track.onended = () => {
             if (g === this.generation) {
-              this.dispatchEvent(new Event('inputlost'));
               this.stop('Input ended. Connect again to resume.');
             }
           };
@@ -311,7 +320,6 @@ export class AudioSession extends EventTarget {
       this.lastPcm = performance.now();
       this.watchdog = setInterval(() => {
         if (g === this.generation && !document.hidden && performance.now() - this.lastPcm > 4500) {
-          this.dispatchEvent(new Event('inputlost'));
           this.stop('Audio input stalled. Connect again to resume.');
         }
       }, 1000);
@@ -328,20 +336,26 @@ export class AudioSession extends EventTarget {
       const ctx = await this.contextForInput();
       if (g !== this.generation) return;
       // Read duration before allocating decoded PCM, including compressed tracks with a small file size.
-      this.url = URL.createObjectURL(file);
-      const player = this.player.cloneNode(false);
-      this.player = player;
-      player.preload = 'metadata';
-      const metadata = new Promise((resolve, reject) => {
-        player.onloadedmetadata = resolve;
-        player.onerror = () => reject(new Error('Choose a track this browser can play.'));
-        player.onabort = () => reject(new DOMException('Stopped', 'AbortError'));
-      });
-      player.src = this.url;
-      await metadata;
+      const probe = new Audio();
+      probe.preload = 'metadata';
+      const url = URL.createObjectURL(file);
+      try {
+        await new Promise((resolve, reject) => {
+          this.cancelProbe = () => reject(new DOMException('Stopped', 'AbortError'));
+          probe.onloadedmetadata = resolve;
+          probe.onerror = () => reject(new Error('Choose a track this browser can play.'));
+          probe.src = url;
+        });
+        if (Number.isFinite(probe.duration) && probe.duration > 3600)
+          throw new Error('Choose a mono or stereo track up to one hour long.');
+      } finally {
+        if (g === this.generation) this.cancelProbe = null;
+        probe.onloadedmetadata = probe.onerror = null;
+        probe.removeAttribute('src');
+        probe.load();
+        URL.revokeObjectURL(url);
+      }
       if (g !== this.generation) return;
-      if (Number.isFinite(player.duration) && player.duration > 3600)
-        throw new Error('Choose a mono or stereo track up to one hour long.');
       this.message = 'Decoding track…';
       this.changed();
       const bytes = await file.arrayBuffer();
@@ -350,18 +364,11 @@ export class AudioSession extends EventTarget {
       if (g !== this.generation) return;
       if (!buffer.length || buffer.duration > 3600 || buffer.numberOfChannels > 2)
         throw new Error('Choose a mono or stereo track up to one hour long.');
-      player.onloadedmetadata = null;
-      player.onabort = null;
-      for (const name of ['play', 'pause', 'ended'])
-        player.addEventListener(name, () => this.playbackChanged());
-      player.onerror = () => {
-        if (g === this.generation) this.fail(g, new Error('The browser could not play this file.'));
-      };
-      player.preload = 'auto';
-      this.inputNode = ctx.createMediaElementSource(player);
+      this.buffer = buffer;
       this.recordBus = ctx.createMediaStreamDestination();
-      this.inputNode.connect(this.recordBus);
-      this.inputNode.connect(ctx.destination);
+      ctx.onstatechange = () => {
+        if (ctx === this.context && this.playing && ctx.state !== 'running') this.pause();
+      };
       if ('MediaMetadata' in window && navigator.mediaSession)
         navigator.mediaSession.metadata = new MediaMetadata({ title: file.name });
       this.phase = 'analyzing';
@@ -380,21 +387,66 @@ export class AudioSession extends EventTarget {
       this.fail(g, error);
     }
   }
+  // A buffer source is single-use. The audible output, recorded soundtrack and
+  // visual playhead all use the same decoded PCM and AudioContext clock.
+  startVoice() {
+    const ctx = this.context;
+    const voice = ctx.createBufferSource();
+    voice.buffer = this.buffer;
+    voice.connect(ctx.destination);
+    voice.connect(this.recordBus);
+    this.startedAt = ctx.currentTime;
+    voice.onended = () => {
+      if (this.voice !== voice) return;
+      this.voice = null;
+      voice.disconnect();
+      this.offset = this.duration;
+      this.playbackChanged();
+    };
+    voice.start(this.startedAt, this.offset);
+    this.voice = voice;
+  }
+  stopVoice() {
+    if (!this.voice) return;
+    this.offset = this.position;
+    const voice = this.voice;
+    this.voice = null;
+    voice.onended = null;
+    voice.stop();
+    voice.disconnect();
+  }
   async play() {
-    if (this.phase !== 'file-ready') return;
-    if (this.player.ended && this.locked) return;
-    if (this.player.ended) this.seek(0);
-    await this.context.resume();
-    await this.player.play();
+    if (this.phase !== 'file-ready' || this.playing) return;
+    const ctx = this.context,
+      revision = this.fileRevision;
+    await ctx.resume();
+    if (ctx !== this.context || this.fileRevision !== revision || this.playing) return;
+    if (this.offset >= this.duration) {
+      if (this.locked) return;
+      this.offset = 0;
+    }
+    this.fileRevision++;
+    this.startVoice();
+    this.playbackChanged();
+  }
+  pause() {
+    if (this.source !== 'file') return;
+    this.fileRevision++;
+    this.stopVoice();
+    this.playbackChanged();
   }
   seek(value) {
     if (this.locked || this.phase !== 'file-ready' || !Number.isFinite(value)) return;
-    this.player.currentTime = Math.max(0, Math.min(this.duration, value));
+    const resume = this.playing;
+    this.stopVoice();
+    this.offset = Math.max(0, Math.min(this.duration, value));
+    this.fileRevision++;
     this.frame = null;
     if (this.armed) {
       this.cue(false);
       this.cue(true, this.options('file').syncOffsetMs);
     }
+    if (resume && this.offset < this.duration) this.startVoice();
     this.lastSample = 0;
     this.playbackChanged();
   }
@@ -402,6 +454,6 @@ export class AudioSession extends EventTarget {
     if (!this.playing || this.pending || timeMs - this.lastSample < 19) return;
     this.lastSample = timeMs;
     this.pending++;
-    this.post({ type: 'sample', position: this.position, now: timeMs / 1000 });
+    this.post({ type: 'sample', position: this.position, now: timeMs / 1000, epoch: this.fileRevision });
   }
 }

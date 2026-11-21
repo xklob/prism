@@ -90,7 +90,11 @@ const opts = (source) => ({
   syncOffsetMs: prefs.data.syncOffsetMs,
   digital: source !== 'microphone',
 });
-const audio = new AudioSession(opts, (channels) => song.pcm(channels));
+const audio = new AudioSession(
+  opts,
+  (channels) => song.pcm(channels),
+  () => (recorder.active ? recorder.stop() : undefined)
+);
 const song = new SongAssist(
   () => refreshReadouts(),
   (hint) => audio.post({ type: 'hint', bpm: hint?.bpm || 0, key: hint?.key || '' })
@@ -613,7 +617,7 @@ async function action(name, el) {
       await audio.loadFile(audio.lastFile);
       return;
     case 'play':
-      if (audio.playing) audio.player.pause();
+      if (audio.playing) audio.pause();
       else await audio.play();
       return;
     case 'restart':
@@ -788,7 +792,6 @@ audio.addEventListener('change', () => {
   }
   refreshPanel();
 });
-audio.addEventListener('inputlost', () => recorder.stop());
 audio.addEventListener('progress', refreshReadouts);
 audio.addEventListener('frame', (e) => {
   diag.add(e.detail);

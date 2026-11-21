@@ -31,7 +31,10 @@ export class Recorder extends EventTarget {
     for (const track of audio) stream.addTrack(track.clone());
     const chunks = [];
     const cleanup = () => stream.getTracks().forEach((t) => t.stop());
-    let rec;
+    let rec, finished;
+    this.finished = new Promise((resolve) => {
+      finished = resolve;
+    });
     try {
       const mimeType = types(audio.length).find((type) => MediaRecorder.isTypeSupported(type));
       rec = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
@@ -58,7 +61,8 @@ export class Recorder extends EventTarget {
           this.url = URL.createObjectURL(this.file);
         }
         this.active = false;
-        this.capture = null;
+        this.rec = this.capture = null;
+        finished();
         this.dispatchEvent(
           new CustomEvent('finish', {
             detail: failure || (chunks.length ? '' : 'The browser returned an empty recording.'),
@@ -68,6 +72,7 @@ export class Recorder extends EventTarget {
       rec.start(1000);
     } catch (error) {
       cleanup();
+      finished();
       throw error;
     }
     this.rec = rec;
@@ -81,5 +86,6 @@ export class Recorder extends EventTarget {
   }
   stop() {
     if (this.rec && this.rec.state !== 'inactive') this.rec.stop();
+    return this.finished;
   }
 }
