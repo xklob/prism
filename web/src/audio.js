@@ -187,12 +187,11 @@ export class AudioSession extends EventTarget {
         : error.message || 'Audio could not start.';
     this.stop(text);
   }
-  async contextForInput() {
+  createContext() {
     const Context = window.AudioContext || window.webkitAudioContext;
     if (!Context) throw new Error('This browser does not provide Web Audio.');
     const ctx = new Context({ sampleRate: 48000, latencyHint: 'interactive' });
     this.context = ctx;
-    await ctx.resume();
     if (ctx.sampleRate !== 48000) throw new Error('This browser could not open a 48 kHz audio context.');
     return ctx;
   }
@@ -258,6 +257,7 @@ export class AudioSession extends EventTarget {
             : 'Microphone input needs a supported browser on HTTPS or localhost.'
         );
       }
+      const ctx = this.createContext();
       const media =
         source === 'system'
           ? devices.getDisplayMedia({
@@ -287,7 +287,7 @@ export class AudioSession extends EventTarget {
           };
         return stream;
       });
-      const [stream, ctx] = await Promise.all([grant, this.contextForInput()]);
+      const [stream] = await Promise.all([grant, ctx.resume()]);
       if (g !== this.generation) return;
       this.message = 'Loading beat models…';
       this.changed();
@@ -333,8 +333,8 @@ export class AudioSession extends EventTarget {
     this.lastFile = file;
     try {
       if (file.size > 1024 ** 3) throw new Error('Choose an audio file smaller than 1 GB.');
-      const ctx = await this.contextForInput();
-      if (g !== this.generation) return;
+      // Decoding and analysis can run while output is suspended. The Play gesture resumes it.
+      const ctx = this.createContext();
       // Read duration before allocating decoded PCM, including compressed tracks with a small file size.
       const probe = new Audio();
       probe.preload = 'metadata';
@@ -345,6 +345,7 @@ export class AudioSession extends EventTarget {
           probe.onloadedmetadata = resolve;
           probe.onerror = () => reject(new Error('Choose a track this browser can play.'));
           probe.src = url;
+          probe.load();
         });
         if (Number.isFinite(probe.duration) && probe.duration > 3600)
           throw new Error('Choose a mono or stereo track up to one hour long.');

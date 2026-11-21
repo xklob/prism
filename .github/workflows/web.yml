@@ -25,6 +25,13 @@ jobs:
       - run: npm ci --prefix web && npm run build --prefix web && npm test --prefix web
       - run: npx playwright install --with-deps chromium firefox webkit
         working-directory: web
+      - name: Provide a 48 kHz audio output for headless playback
+        run: |
+          sudo apt-get install -y pulseaudio pulseaudio-utils
+          pulseaudio --start --exit-idle-time=-1
+          pactl load-module module-null-sink sink_name=prism_ci rate=48000
+          pactl set-default-sink prism_ci
+          test "$(pactl get-default-sink)" = prism_ci
       - run: npm run test:browser --prefix web
       - run: npm run test:playback --prefix web
       - uses: actions/upload-artifact@v4
