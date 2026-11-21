@@ -49,6 +49,7 @@
       <section id="visual" aria-label="Visualizer and patterns">
         <div class="stage" id="stage">
           <canvas id="canvas" aria-label="prism visualizer. Drag to reframe the pattern."></canvas>
+          <div id="render-error" class="stage-error" role="alert" hidden></div>
           <div class="stage-caption">
             <span class="readout" id="input-mode">Ambient</span><span id="stage-title">Kaleido</span>
           </div>
@@ -70,7 +71,6 @@
             <time id="track-time"></time>
           </div>
           <button type="button" id="monitor" data-act="monitor" class="stage-monitor" hidden></button>
-          <div id="render-error" class="stage-error" role="alert" hidden></div>
         </div>
         <div id="wave-panel" hidden>
           <div class="wave-heading">

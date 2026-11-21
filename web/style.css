@@ -366,6 +366,7 @@ button.action-main:hover:not(:disabled) {
   inset: 0;
   display: grid;
   place-content: center;
+  pointer-events: none;
   text-align: center;
   background: #121312;
   padding: 2rem;

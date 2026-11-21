@@ -8,6 +8,23 @@ const open = async (page) => {
   await page.goto('./');
   await button(page, 'Wormhole').waitFor();
 };
+test('the graphics error leaves audio and playback controls accessible', async ({ page }) => {
+  await page.addInitScript(() => {
+    const getContext = HTMLCanvasElement.prototype.getContext;
+    HTMLCanvasElement.prototype.getContext = function (type, ...options) {
+      return type === 'webgl2' ? null : getContext.call(this, type, ...options);
+    };
+  });
+  await open(page);
+  await expect(page.locator('#render-error')).toContainText('WebGL 2 is unavailable');
+  await tab(page, 'Audio').click();
+  await page.getByLabel('Source', { exact: true }).selectOption('file');
+  await page.locator('#file').setInputFiles(await musicFile());
+  await button(page, 'Play track').click();
+  await expect(button(page, 'Pause track')).toBeVisible();
+  await expect.poll(() => page.locator('#track-time').textContent()).not.toMatch(/^0:00 /);
+});
+
 test('pattern tuning, saved looks, transitions, effects, themes and fit on a phone', async ({ page }) => {
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
