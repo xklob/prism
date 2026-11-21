@@ -34,9 +34,10 @@ const files = (await readdir(out, { recursive: true, withFileTypes: true }))
   .filter((entry) => entry.isFile())
   .map((entry) => path.relative(out, path.join(entry.parentPath, entry.name)).split(path.sep).join('/'))
   .sort();
-const digest = createHash('sha256');
+const workerTemplate = await readFile(path.join(root, 'scripts/offline-worker.js'), 'utf8');
+const digest = createHash('sha256').update(workerTemplate);
 for (const name of files) digest.update(name).update(await readFile(path.join(out, name)));
-const serviceWorker = (await readFile(path.join(root, 'scripts/offline-worker.js'), 'utf8'))
+const serviceWorker = workerTemplate
   .replace('__BUILD_HASH__', digest.digest('hex').slice(0, 16))
   .replace('/* FILES */ []', JSON.stringify(files));
 await writeFile(path.join(out, 'sw.js'), serviceWorker);
