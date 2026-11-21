@@ -114,7 +114,7 @@ test('microphone connects, pattern switch disconnects, and offline reload can an
 
 test('tab sharing handles cancelled, video-only and revoked grants without recording shared pixels', async ({
   page,
-}) => {
+}, testInfo) => {
   // Synthetic display picker. A real desktop picker requires the browser's native consent dialog.
   await page.addInitScript(() => {
     window.shareMode = 'cancel';
@@ -122,9 +122,9 @@ test('tab sharing handles cancelled, video-only and revoked grants without recor
     window.MediaRecorder = class extends NativeRecorder {
       constructor(...args) {
         super(...args);
-        window.capturedBytes = 0;
+        window.encodedChunks = 0;
         this.addEventListener('dataavailable', (event) => {
-          window.capturedBytes += event.data.size;
+          if (event.data.size) window.encodedChunks++;
         });
       }
     };
@@ -172,7 +172,9 @@ test('tab sharing handles cancelled, video-only and revoked grants without recor
   await expect.poll(() => page.locator('#level').evaluate((el) => el.value)).toBeGreaterThan(0.1);
   await button(page, 'Record session').click();
   await expect(button(page, 'Stop recording')).toBeVisible();
-  await expect.poll(() => page.evaluate(() => window.capturedBytes), { timeout: 20000 }).toBeGreaterThan(0);
+  await expect
+    .poll(() => page.evaluate(() => window.encodedChunks), { timeout: 20000 })
+    .toBeGreaterThanOrEqual(2);
   await page.evaluate(() => window.fixtureStream.getAudioTracks()[0].dispatchEvent(new Event('ended')));
   await expect(button(page, 'Record session')).toBeVisible();
   await expect(page.locator('#audio-status')).toContainText('Input ended');
@@ -181,27 +183,41 @@ test('tab sharing handles cancelled, video-only and revoked grants without recor
   ).toBe(true);
   await tab(page, 'Settings').click();
   await expect(page.locator('#view-video')).toBeVisible();
-  const pixels = await page.locator('#view-video').evaluate(async (link) => {
+  const saved = page.waitForEvent('download');
+  await page.locator('#last-video').click();
+  const clip = await saved;
+  await clip.saveAs(testInfo.outputPath('tab-recording.' + clip.suggestedFilename().split('.').at(-1)));
+  const frames = await page.locator('#view-video').evaluate(async (link) => {
     const video = document.createElement('video');
     video.muted = true;
     video.src = link.href;
-    await video.play();
-    await new Promise((resolve) => video.requestVideoFrameCallback(resolve));
     const probe = document.createElement('canvas');
     probe.width = 32;
     probe.height = 32;
-    const ctx = probe.getContext('2d');
-    ctx.drawImage(video, 0, 0, 32, 32);
-    video.pause();
-    const data = ctx.getImageData(0, 0, 32, 32).data;
-    let yellow = 0,
-      lit = 0;
-    for (let i = 0; i < data.length; i += 4) {
-      if (data[i] > 230 && data[i + 1] > 230 && data[i + 2] < 30) yellow++;
-      if (Math.max(data[i], data[i + 1], data[i + 2]) > 30) lit++;
-    }
-    return { yellow, lit };
+    const ctx = probe.getContext('2d', { willReadFrequently: true });
+    const frames = [];
+    const sample = () => {
+      ctx.drawImage(video, 0, 0, 32, 32);
+      const data = ctx.getImageData(0, 0, 32, 32).data;
+      let yellow = 0,
+        lit = 0;
+      for (let i = 0; i < data.length; i += 4) {
+        if (data[i] > 230 && data[i + 1] > 230 && data[i + 2] < 30) yellow++;
+        if (Math.max(data[i], data[i + 1], data[i + 2]) > 30) lit++;
+      }
+      frames.push({ yellow, lit });
+      video.requestVideoFrameCallback(sample);
+    };
+    const ended = new Promise((resolve, reject) => {
+      video.onended = resolve;
+      video.onerror = () => reject(new Error(video.error.message));
+    });
+    video.requestVideoFrameCallback(sample);
+    await video.play();
+    await ended;
+    return frames;
   });
-  expect(pixels.yellow).toBeLessThan(50);
-  expect(pixels.lit).toBeGreaterThan(10);
+  expect(frames.length).toBeGreaterThan(1);
+  expect(Math.max(...frames.map((f) => f.yellow))).toBeLessThan(50);
+  expect(frames.filter((f) => f.lit > 10).length).toBeGreaterThan(1);
 });

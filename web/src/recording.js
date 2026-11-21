@@ -20,13 +20,7 @@ export class Recorder extends EventTarget {
   start(canvas, audioStream, fps) {
     if (!Recorder.supported) throw new Error('This browser cannot record a canvas.');
     if (this.active) return;
-    const surface = document.createElement('canvas');
-    surface.width = canvas.width;
-    surface.height = canvas.height;
-    const ctx = surface.getContext('2d', { alpha: false });
-    if (!ctx) throw new Error('Could not create the recording surface.');
-    const stream = surface.captureStream(fps);
-    const video = stream.getVideoTracks()[0];
+    const stream = canvas.captureStream(fps);
     const audio = audioStream?.getAudioTracks().filter((t) => t.readyState === 'live') || [];
     for (const track of audio) stream.addTrack(track.clone());
     const chunks = [];
@@ -61,7 +55,7 @@ export class Recorder extends EventTarget {
           this.url = URL.createObjectURL(this.file);
         }
         this.active = false;
-        this.rec = this.capture = null;
+        this.rec = null;
         finished();
         this.dispatchEvent(
           new CustomEvent('finish', {
@@ -77,12 +71,7 @@ export class Recorder extends EventTarget {
     }
     this.rec = rec;
     this.active = true;
-    this.size = `${surface.width} × ${surface.height} · ${fps} fps target`;
-    this.capture = () => {
-      ctx.drawImage(canvas, 0, 0, surface.width, surface.height);
-      video.requestFrame?.();
-    };
-    this.capture();
+    this.size = `${canvas.width} × ${canvas.height} · ${fps} fps target`;
   }
   stop() {
     if (this.rec && this.rec.state !== 'inactive') this.rec.stop();

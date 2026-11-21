@@ -1,5 +1,6 @@
 import dgram from 'node:dgram';
 import http from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { networkInterfaces } from 'node:os';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -20,6 +21,27 @@ type Participant = { endpoint: Endpoint; name: string; seen: number; source: boo
   health: Record<string, unknown>; rateAt: number; rateCount: number };
 type Message = { id: string; v: number; token: string; type: string; name?: unknown; t1: number; nonce: string;
   health?: Record<string, unknown>; audio?: AudioInput; sid?: string };
+// Windows can reserve TCP ranges that remain available to the UDP allocator.
+async function bindShowPort(port: number, openBrowser: () => ReturnType<typeof startBrowserParticipants>) {
+  for (let attempt = 1; ; attempt++) {
+    const browser = await openBrowser();
+    const boundPort = (browser.address() as AddressInfo).port;
+    const udp = dgram.createSocket('udp4');
+    try {
+      await new Promise<void>((resolve, reject) => {
+        udp.once('error', reject);
+        udp.bind(boundPort, '0.0.0.0', () => { udp.removeListener('error', reject); resolve(); });
+      });
+      return { udp, browser, boundPort };
+    } catch (error) {
+      udp.close();
+      await new Promise<void>(resolve => browser.close(() => resolve()));
+      const code = (error as NodeJS.ErrnoException).code;
+      if (port !== 0 || attempt >= 8 || (code !== 'EADDRINUSE' && code !== 'EACCES')) throw error;
+    }
+  }
+}
+
 export async function startController(options: { udpPort?: number; httpPort?: number; host?: string; webUrl?: string; appDirectory?: string } = {}) {
   const dashboard = await readFile(fileURLToPath(new URL('../web/index.html', import.meta.url)));
   const browserScript = await readFile(fileURLToPath(new URL('../web/app.js', import.meta.url)));
@@ -34,7 +56,6 @@ export async function startController(options: { udpPort?: number; httpPort?: nu
   const show = new Show(), keys = identity(), sid = randomUUID();
   const viewerToken = secret(), sourceToken = secret(), adminToken = secret();
   const clients = new Map<string, Participant>();
-  const udp = dgram.createSocket('udp4');
   let seq = 0, audioOwner: string | undefined, rejected = 0, lastPacketBytes = 0;
   let socketError = '';
   const message = (type: string, body: object) => ({ v: 1, type, sid, ...body });
@@ -86,6 +107,28 @@ export async function startController(options: { udpPort?: number; httpPort?: nu
   function sync(m: Message, received: number) {
     return message('sync', { id: m.id, nonce: m.nonce, t1: m.t1, t2: received, t3: now() });
   }
+  const interfaces = () => Object.entries(networkInterfaces()).flatMap(([name, entries]) =>
+    (entries ?? []).filter(n => n.family === 'IPv4' && !n.internal)
+      .map(n => ({ name, address: n.address })));
+  let advertisedHost = options.host ?? process.env.PRISM_HOST ?? interfaces()[0]?.address ?? '127.0.0.1';
+  const appOrigins = new Set<string>(appUrl ? [appUrl.origin] : []);
+  const { udp, browser, boundPort } = await bindShowPort(udpPort, () =>
+    startBrowserParticipants(udpPort, appOrigins, appDirectory, tls, (packet, address, received) => {
+      const m: Message = JSON.parse(packet);
+      if (m.sid !== sid) throw new ParticipantError(403, 'Expired invitation.');
+      if (!['exchange', 'leave'].includes(m.type)) throw new ParticipantError(400, 'Unknown request.');
+      if (m.audio && !equal(m.token, sourceToken)) throw new ParticipantError(403, 'Audio input requires a source invitation.');
+      let errorEnvelope;
+      try { participant(m, { kind: 'web', address }, received); }
+      catch (error) {
+        if (!(error instanceof ParticipantError) || ![409, 422].includes(error.code)) throw error;
+        errorEnvelope = keys.webEnvelope(message('error', { message: error.message }));
+      }
+      if (m.type === 'leave') return {};
+      return { sync: keys.webEnvelope(sync(m, received)), state: browserState, error: errorEnvelope };
+    }, now));
+  const localAppUrl = () => new URL((tls ? 'https://' : 'http://') + advertisedHost + ':' + boundPort + '/');
+  appOrigins.add(localAppUrl().origin);
   udp.on('error', error => { socketError = error.message; });
   udp.on('message', (packet, remote) => {
     const received = now();
@@ -103,35 +146,6 @@ export async function startController(options: { udpPort?: number; httpPort?: nu
       }
       rejected++;
     }
-  });
-  await new Promise<void>((resolve, reject) => {
-    udp.once('error', reject);
-    udp.bind(udpPort, '0.0.0.0', () => { udp.removeListener('error', reject); resolve(); });
-  });
-  const boundPort = udp.address().port;
-  const interfaces = () => Object.entries(networkInterfaces()).flatMap(([name, entries]) =>
-    (entries ?? []).filter(n => n.family === 'IPv4' && !n.internal)
-      .map(n => ({ name, address: n.address })));
-  let advertisedHost = options.host ?? process.env.PRISM_HOST ?? interfaces()[0]?.address ?? '127.0.0.1';
-  const localAppUrl = () => new URL((tls ? 'https://' : 'http://') + advertisedHost + ':' + boundPort + '/');
-  const appOrigins = new Set([localAppUrl().origin]);
-  if (appUrl) appOrigins.add(appUrl.origin);
-  const browser = await startBrowserParticipants(boundPort, appOrigins, appDirectory, tls, (packet, address, received) => {
-    const m: Message = JSON.parse(packet);
-    if (m.sid !== sid) throw new ParticipantError(403, 'Expired invitation.');
-    if (!['exchange', 'leave'].includes(m.type)) throw new ParticipantError(400, 'Unknown request.');
-    if (m.audio && !equal(m.token, sourceToken)) throw new ParticipantError(403, 'Audio input requires a source invitation.');
-    let errorEnvelope;
-    try { participant(m, { kind: 'web', address }, received); }
-    catch (error) {
-      if (!(error instanceof ParticipantError) || ![409, 422].includes(error.code)) throw error;
-      errorEnvelope = keys.webEnvelope(message('error', { message: error.message }));
-    }
-    if (m.type === 'leave') return {};
-    return { sync: keys.webEnvelope(sync(m, received)), state: browserState, error: errorEnvelope };
-  }, now).catch(async error => {
-    await new Promise<void>(resolve => udp.close(() => resolve()));
-    throw error;
   });
   const ticker = setInterval(() => {
     const time = now();

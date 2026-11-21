@@ -27,3 +27,10 @@ jobs:
         working-directory: web
       - run: npm run test:browser --prefix web
       - run: npm run test:playback --prefix web
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: browser-test-output
+          path: review/web-tests/
+          if-no-files-found: ignore
+          retention-days: 3

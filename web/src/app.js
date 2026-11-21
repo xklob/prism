@@ -355,7 +355,7 @@ function refreshReadouts() {
 function draw(time) {
   audio.sample(time);
   const frame = crowd.connected ? crowd.frame(time) : null;
-  if (renderer?.draw(time, renderSettings, audio.frame, frame)) recorder.capture?.();
+  renderer?.draw(time, renderSettings, audio.frame, frame);
   if (time - lastReadout >= 100) {
     lastReadout = time;
     refreshReadouts();

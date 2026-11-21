@@ -117,3 +117,27 @@ test('default invitations open the packaged app and expose only listed static as
   const permission = await fetch(endpoint, { method: 'OPTIONS', headers: { Origin: invite.origin } });
   assert.equal(permission.headers.get('Access-Control-Allow-Origin'), invite.origin);
 });
+
+test('a fixed UDP port collision releases the companion TCP listener', async t => {
+  const net = await import('node:net');
+  const reservation = net.createServer();
+  const listen = (server: ReturnType<typeof net.createServer>, port: number) =>
+    new Promise<number>((resolve, reject) => {
+      server.once('error', reject);
+      server.listen(port, '0.0.0.0', () => {
+        server.removeListener('error', reject);
+        resolve((server.address() as import('node:net').AddressInfo).port);
+      });
+    });
+  const port = await listen(reservation, 0);
+  const occupied = dgram.createSocket('udp4');
+  await new Promise<void>((resolve, reject) => {
+    occupied.once('error', reject);
+    occupied.bind(port, '0.0.0.0', () => { occupied.removeListener('error', reject); resolve(); });
+  });
+  t.after(() => occupied.close());
+  await new Promise<void>(resolve => reservation.close(() => resolve()));
+  await assert.rejects(startController({ udpPort: port, httpPort: 0 }), { code: 'EADDRINUSE' });
+  assert.equal(await listen(reservation, port), port);
+  await new Promise<void>(resolve => reservation.close(() => resolve()));
+});
