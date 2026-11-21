@@ -67,8 +67,8 @@ class KaleidoscopeDeviceTest {
         click("Done"); click("Immerse")
         device.wait(Until.findObject(By.text("Got it")), 1000)?.click()
         SystemClock.sleep(2800); refresh()
-        assertTrue("Recording remains accessible in fullscreen", device.hasObject(By.desc("Record session")))
-        assertTrue("Measured FPS remains visible in fullscreen", device.hasObject(By.descStartsWith("Current frame rate")))
+        assertFalse("Immerse hides the recorder", device.hasObject(By.desc("Record session")))
+        assertFalse("Immerse hides the frame rate", device.hasObject(By.descStartsWith("Current frame rate")))
         device.takeScreenshot(File(evidence, "kaleidoscope-fullscreen-${device.displayWidth}.png"))
     }
 }

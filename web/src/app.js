@@ -195,22 +195,19 @@ function refreshToolbar() {
   $('pause').innerHTML =
     icon(paused ? 'play' : 'pause') + '<span>' + (paused ? 'Resume' : 'Pause') + '</span>';
   const label = recorder.active ? 'Stop recording' : 'Record session';
-  for (const id of ['record', 'immersive-record']) {
-    const el = $(id);
-    el.disabled =
-      !renderer ||
-      !Recorder.supported ||
-      crowd.connected ||
-      (!recorder.active && ['starting', 'analyzing'].includes(audio.phase));
-    el.classList.toggle('active', recorder.active);
-    el.setAttribute('aria-label', label);
-    el.title = recorder.active
-      ? recorder.size
-      : 'Record ' + (audio.active ? sourceNames[audio.source] : 'silent video');
-    el.innerHTML =
-      icon(recorder.active ? 'stop' : 'record') +
-      (id === 'record' ? '<span>' + (recorder.active ? 'Stop' : 'Record') + '</span>' : '');
-  }
+  const recordButton = $('record');
+  recordButton.disabled =
+    !renderer ||
+    !Recorder.supported ||
+    crowd.connected ||
+    (!recorder.active && ['starting', 'analyzing'].includes(audio.phase));
+  recordButton.classList.toggle('active', recorder.active);
+  recordButton.setAttribute('aria-label', label);
+  recordButton.title = recorder.active
+    ? recorder.size
+    : 'Record ' + (audio.active ? sourceNames[audio.source] : 'silent video');
+  recordButton.innerHTML =
+    icon(recorder.active ? 'stop' : 'record') + '<span>' + (recorder.active ? 'Stop' : 'Record') + '</span>';
   $('pause').disabled = crowd.connected;
   const file = audio.source === 'file' && audio.active;
   $('transport').hidden = !file;
@@ -333,7 +330,7 @@ function refreshReadouts() {
       (f?.cueMessage || 'Waiting for a stable phrase grid');
   if (!$('transport').hidden)
     $('track-time').textContent = clock(audio.position) + ' / ' + clock(audio.duration);
-  if (!$('wave-panel').hidden) {
+  if (!ui.immersive && !$('wave-panel').hidden) {
     wave.setAttribute('aria-valuenow', Math.round(audio.position));
     wave.setAttribute('aria-valuetext', clock(audio.position));
     drawWave(wave, audio.track, audio.position);
@@ -476,14 +473,25 @@ function dialog(title, message, initial, accept) {
     input.select();
   }
 }
+const canvasLabel = canvas.getAttribute('aria-label');
 function immerse(value) {
+  if (ui.immersive === value) return;
   ui.immersive = value;
   void keepScreenAwake();
   document.body.classList.toggle('immersive', value);
-  $('exit-immersive').hidden = !value;
-  $('immersive-record').hidden = !value;
-  if (value) document.documentElement.requestFullscreen?.().catch(() => {});
-  else if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
+  if (value) {
+    canvas.tabIndex = 0;
+    canvas.setAttribute('role', 'button');
+    canvas.setAttribute('aria-label', 'Return to controls');
+    canvas.focus({ preventScroll: true });
+    document.documentElement.requestFullscreen?.().catch(() => {});
+  } else {
+    canvas.removeAttribute('tabindex');
+    canvas.removeAttribute('role');
+    canvas.setAttribute('aria-label', canvasLabel);
+    if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
+    $('immerse').focus({ preventScroll: true });
+  }
 }
 document.addEventListener('fullscreenchange', () => {
   if (ui.immersive && !document.fullscreenElement) immerse(false);
@@ -751,14 +759,10 @@ document.addEventListener('click', (e) => {
         refreshToolbar();
         break;
       case 'record':
-      case 'immersive-record':
         record();
         break;
       case 'immerse':
         immerse(true);
-        break;
-      case 'exit-immersive':
-        immerse(false);
         break;
     }
   } catch (error) {
@@ -819,7 +823,7 @@ recorder.addEventListener('finish', (e) => {
 });
 let drag = null;
 canvas.addEventListener('pointerdown', (e) => {
-  if (crowd.connected) return;
+  if (crowd.connected && !ui.immersive) return;
   drag = { x: e.clientX, y: e.clientY, pan: [...ui.pan], moved: false };
   canvas.setPointerCapture(e.pointerId);
 });
@@ -829,6 +833,7 @@ canvas.addEventListener('pointermove', (e) => {
     dy = e.clientY - drag.y,
     dim = Math.max(1, Math.min(canvas.clientWidth, canvas.clientHeight));
   if (Math.hypot(dx, dy) > 4) drag.moved = true;
+  if (crowd.connected) return;
   ui.pan = [
     Math.max(-1, Math.min(1, drag.pan[0] + (dx * 2) / dim)),
     Math.max(-1, Math.min(1, drag.pan[1] - (dy * 2) / dim)),
@@ -841,6 +846,9 @@ canvas.addEventListener('pointerup', () => {
 });
 canvas.addEventListener('pointercancel', () => {
   drag = null;
+});
+canvas.addEventListener('click', (event) => {
+  if (ui.immersive && event.detail === 0) immerse(false);
 });
 const seekWave = (e) => {
   const rect = wave.getBoundingClientRect();
@@ -862,7 +870,10 @@ wave.addEventListener('keydown', (e) => {
   );
 });
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && ui.immersive) immerse(false);
+  if (ui.immersive && (e.key === 'Escape' || (e.target === canvas && ['Enter', ' '].includes(e.key)))) {
+    e.preventDefault();
+    immerse(false);
+  }
 });
 document.addEventListener('visibilitychange', () => {
   crowd.setVisible(!document.hidden);

@@ -53,7 +53,6 @@ fun TuningOverlay(
     songAssistant: SongAssistant, initialTab: String = "Geometry", tablet: Boolean = false,
     appSettings: Boolean = false, switchScope: () -> Unit = {},
     minimized: Boolean = false, onMinimize: () -> Unit = {},
-    timingMinimized: Boolean = false, onTimingMinimize: () -> Unit = {},
     performance: () -> RenderQualityReport = { RenderQualityReport() }, looks: LookLibrary,
     topControlsHeight: Dp = 100.dp, bottomInset: Dp = 0.dp, chooseFile: () -> Unit = connect
 ) {
@@ -85,14 +84,11 @@ fun TuningOverlay(
         }
     }
     BoxWithConstraints(Modifier.fillMaxSize().safeDrawingPadding().imePadding().padding(bottom = bottomInset).padding(16.dp)) {
-        val sidePanel = maxWidth >= 600.dp
+        val sidePanel = tablet || maxWidth >= 600.dp
         val compactHeight = maxHeight < 480.dp
-        val controlsWidth = if (sidePanel) Modifier.width((maxWidth * .46f).coerceIn(360.dp, 480.dp)) else Modifier.fillMaxWidth()
+        val controlsWidth = if (sidePanel) Modifier.width(if (tablet) (maxWidth * .38f).coerceIn(328.dp, 408.dp) else (maxWidth * .46f).coerceIn(360.dp, 480.dp)) else Modifier.fillMaxWidth()
         val availableHeight = (maxHeight - topControlsHeight - 12.dp).coerceAtLeast(120.dp)
         val controlsHeight = if (sidePanel || maxHeight < 480.dp) availableHeight else minOf(availableHeight, maxHeight * .68f)
-        if (tablet && s.audioEnabled && s.source != AudioSource.LOCAL) TimingSidebar(s, status.running, change,
-            Modifier.align(Alignment.TopStart).padding(top = topControlsHeight + 12.dp).width(if (timingMinimized) 56.dp else 300.dp)
-                .heightIn(max=(maxHeight-topControlsHeight-232.dp).coerceAtLeast(120.dp)).alpha(otherAlpha), timingMinimized, onTimingMinimize)
         if (tablet && minimized) {
             SidebarHandle("Settings", false, onMinimize, Modifier.align(Alignment.CenterEnd))
         } else if (hidden) {
@@ -154,14 +150,12 @@ fun TuningOverlay(
                                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                     Column(Modifier.weight(1f)) {
                                         Text("Tablet monitor", style = ReadableText, fontSize = 14.sp)
-                                        Text("Song and timing at bottom left, including fullscreen", style = ReadableText, fontSize = 12.sp)
+                                        Text("Song and timing while audio is active", style = ReadableText, fontSize = 12.sp)
                                     }
                                     SettingHelp("Tablet monitor")
                                     Switch(s.tabletMonitor, { change(s.copy(tabletMonitor = it)) },
                                         Modifier.semantics { contentDescription = "Tablet monitor" })
                                 }
-                                Text("Shown on tablet-sized windows. Hidden from saved videos.", style = ReadableText, fontSize = 12.sp,
-                                    modifier = Modifier.padding(vertical = 12.dp))
                             }
                             s.scene.shapeTab -> PatternGeometry(s, change, activeControl, ::editing, otherAlpha)
                             "Color" -> {

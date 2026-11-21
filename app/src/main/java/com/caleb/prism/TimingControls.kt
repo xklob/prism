@@ -60,14 +60,11 @@ import kotlinx.coroutines.delay
 }
 
 @Composable fun SidebarHandle(label: String, left: Boolean, expand: () -> Unit, modifier: Modifier = Modifier) {
-    Surface(modifier.width(56.dp), shape = RoundedCornerShape(16.dp), color = Color(0xE6080A16),
+    Surface(modifier.width(72.dp), shape = RoundedCornerShape(12.dp), color = Color(0xE6080A16),
         border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = .2f))) {
-        TextButton(onClick = expand, modifier = Modifier.height(96.dp).semantics { contentDescription = "Expand ${label.lowercase()}" },
-            contentPadding = PaddingValues(2.dp)) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(if (left) "›" else "‹", color = Color.White, fontSize = 25.sp)
-                Text(label, color = Color.White, fontSize = 9.sp)
-            }
+        TextButton(onClick = expand, modifier = Modifier.heightIn(min = 48.dp)
+            .semantics { contentDescription = "Expand ${label.lowercase()}" }, contentPadding = PaddingValues(4.dp)) {
+            Text(if (left) "$label ›" else "‹ $label", color = Color.White, fontSize = 12.sp)
         }
     }
 }

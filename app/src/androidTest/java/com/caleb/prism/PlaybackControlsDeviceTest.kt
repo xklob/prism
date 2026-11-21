@@ -21,6 +21,7 @@ class PlaybackControlsDeviceTest {
     private val fixture = ComponentName(instrumentation.context.packageName, MediaFixtureService::class.java.name)
     private val listener = "${context.packageName}/${NowPlayingListener::class.java.name}"
     private var activity: MainActivity? = null
+    private val tablet get() = context.resources.configuration.smallestScreenWidthDp >= 600
     private fun refresh() { if (android.os.Build.VERSION.SDK_INT >= 33) instrumentation.uiAutomation.clearCache() }
     private fun await(message: String, condition: () -> Boolean) {
         val deadline = SystemClock.elapsedRealtime() + 10000
@@ -55,7 +56,12 @@ class PlaybackControlsDeviceTest {
         AudioEngine.stop(); device.unfreezeRotation()
     }
     @Test fun controlsDispatchToRealSessionWithoutCaptureOrSongAssist() {
-        await("Access entry is visible") { device.hasObject(By.text("ENABLE PLAYBACK")) }
+        if (tablet) {
+            assertFalse(device.hasObject(By.desc("System playback controls")))
+            tap("App settings", false); tap("Song", false)
+            assertTrue(device.hasObject(By.text("Allow playback info access")))
+            tap("Done", false)
+        } else await("Access entry is visible") { device.hasObject(By.text("ENABLE PLAYBACK")) }
         device.executeShellCommand("cmd notification allow_listener $listener")
         fixture()
         await("Player is discovered") { NowPlaying.controls.value?.title == "Fixture track 1" }
@@ -82,12 +88,14 @@ class PlaybackControlsDeviceTest {
         tap("Done", false); tap("Immerse", false)
         device.wait(Until.findObject(By.text("Got it")), 1000)?.click()
         SystemClock.sleep(2600); refresh()
-        assertTrue(device.hasObject(By.desc("System playback controls")))
+        assertFalse(device.hasObject(By.desc("System playback controls")))
+        assertTrue(NowPlaying.controls.value?.playing == true)
+        device.pressBack()
         tap("Pause playback")
-        await("Controls work in fullscreen") { NowPlaying.controls.value?.playing == false }
+        await("Controls work after returning from Immerse") { NowPlaying.controls.value?.playing == false }
         context.stopService(Intent().setComponent(fixture))
         await("Destroyed sessions clear the controls") { NowPlaying.controls.value == null }
-        await("No stale enabled Play button") { device.findObject(By.desc("Play playback"))?.isEnabled == false }
+        await("No stale enabled Play button") { device.findObject(By.desc("Play playback"))?.isEnabled != true }
     }
     @Test fun capabilitiesMissingMetadataAndRevokedAccessAreHandled() {
         device.executeShellCommand("cmd notification allow_listener $listener")
@@ -100,7 +108,7 @@ class PlaybackControlsDeviceTest {
         tap("Pause playback")
         await("Metadata-free session pauses") { NowPlaying.controls.value?.playing == false }
         device.executeShellCommand("cmd notification disallow_listener $listener")
-        await("Revocation clears transport access") { NowPlaying.controls.value == null && device.hasObject(By.text("ENABLE PLAYBACK")) }
+        await("Revocation clears transport access") { NowPlaying.controls.value == null && (if (tablet) !device.hasObject(By.desc("System playback controls")) else device.hasObject(By.text("ENABLE PLAYBACK"))) }
         var sent = true
         instrumentation.runOnMainSync { sent = NowPlaying.command(context, PlaybackCommand.TOGGLE) }
         assertFalse("Revoked access cannot send commands", sent)

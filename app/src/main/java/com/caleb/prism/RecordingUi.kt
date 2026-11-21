@@ -17,7 +17,7 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import java.util.Locale
 
-/** A persistent control outside the GL surface, including fullscreen and tuning. */
+/** Recording controls sit outside the GL surface and return when Immerse ends. */
 @Composable
 fun SessionRecordControl(state: RecordingState, activeSource: AudioSource?, connecting: Boolean,
                          record: () -> Unit, stop: () -> Unit, modifier: Modifier = Modifier) {

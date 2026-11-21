@@ -70,6 +70,7 @@ class PatternTuningDeviceTest {
         Assume.assumeTrue(context.resources.configuration.smallestScreenWidthDp >= 600)
         launch(Scene.KALEIDOSCOPE, audioEnabled = true)
         click("Motion")
+        device.findObject(By.desc("Expand timing")).click(); SystemClock.sleep(250); refresh()
         device.findObject(By.desc("Minimize settings")).click(); SystemClock.sleep(250); refresh()
         assertFalse(device.hasObject(By.desc("Tuning panel")))
         assertTrue(device.hasObject(By.desc("Manual timing panel")))
@@ -78,7 +79,7 @@ class PatternTuningDeviceTest {
         assertTrue(device.hasObject(By.desc("Expand settings")))
         assertTrue(device.hasObject(By.desc("Expand timing")))
         assertTrue(device.hasObject(By.desc("Record session")))
-        assertTrue(device.hasObject(By.desc("Tablet song and timing monitor")))
+        assertFalse(device.hasObject(By.desc("Tablet song and timing monitor")))
         val evidence = File(context.getExternalFilesDir(null), "review").apply { mkdirs() }
         device.takeScreenshot(File(evidence, "tablet-sidebars-minimized.png"))
         device.findObject(By.desc("Expand settings")).click(); SystemClock.sleep(250); refresh()

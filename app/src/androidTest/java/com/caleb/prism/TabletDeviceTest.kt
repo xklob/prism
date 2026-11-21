@@ -25,6 +25,8 @@ class TabletDeviceTest {
         node.click(); SystemClock.sleep(400); refresh()
     }
     private fun launch(scene: Scene=Scene.KALEIDO, audioEnabled: Boolean=false) {
+        Configurator.getInstance().waitForIdleTimeout = 300
+        AudioEngine.stop()
         context.getSharedPreferences("prism",0).edit().clear().commit()
         SettingsStore(context).save(VisualSettings.defaults(scene).copy(audioEnabled=audioEnabled))
         device.wakeUp(); device.setOrientationNatural()
@@ -35,12 +37,19 @@ class TabletDeviceTest {
     @After fun cleanup() {
         device.setOrientationNatural()
         instrumentation.runOnMainSync { activity?.finish() }
+        AudioEngine.stop(); device.unfreezeRotation()
     }
     @Test fun tabletPanelAndMonitorRemainReachableAcrossRotationAndFullscreen() {
         Assume.assumeTrue(context.resources.configuration.smallestScreenWidthDp>=600)
-        launch()
-        val monitor="Tablet song and timing monitor"
-        assertTrue(device.hasObject(By.desc(monitor)))
+        launch(audioEnabled = true)
+        val monitor = "Tablet song and timing monitor"
+        assertFalse(device.hasObject(By.desc(monitor)))
+        assertTrue(device.hasObject(By.desc("Expand timing")))
+        for (scene in Scene.entries) assertTrue(device.hasObject(By.desc("Pattern ${scene.title}")))
+        assertTrue(device.takeScreenshot(File(evidence, "tablet-home-compact.png")))
+        instrumentation.uiAutomation.grantRuntimePermission(context.packageName, android.Manifest.permission.RECORD_AUDIO)
+        click("Connect audio")
+        assertTrue(device.wait(Until.hasObject(By.desc(monitor)), 10000))
         click("Tune")
         val panel=device.findObject(By.desc("Tuning panel")).visibleBounds
         val hud=device.findObject(By.desc(monitor)).visibleBounds
@@ -71,12 +80,18 @@ class TabletDeviceTest {
         device.setOrientationNatural(); SystemClock.sleep(500); device.findObject(By.desc("Minimize settings")).click(); SystemClock.sleep(300); refresh()
         assertTrue(device.hasObject(By.desc(monitor)))
         device.findObject(By.desc("Expand settings")).click(); SystemClock.sleep(300); refresh(); click("Done"); click("Immerse")
-        SystemClock.sleep(2800); refresh()
+        refresh()
+        assertTrue(device.wait(Until.gone(By.text("Immerse")), 3000))
+        for (label in listOf(monitor, "Record session", "Manual timing panel", "Expand timing", "System playback controls", "Track waveform panel"))
+            assertFalse("Hidden in Immerse: $label", device.hasObject(By.desc(label)))
+        assertFalse(device.hasObject(By.descStartsWith("Current frame rate")))
+        assertFalse(device.hasObject(By.text("Tap anywhere to return")))
+        assertTrue(device.hasObject(By.descContains(" visualizer.").clickable(true)))
+        assertTrue(AudioEngine.status.value.running)
+        assertTrue(device.takeScreenshot(File(evidence, "tablet-immerse.png")))
+        device.click(device.displayWidth / 2, device.displayHeight / 2)
+        assertTrue(device.wait(Until.hasObject(By.text("Immerse")), 4000))
         assertTrue(device.hasObject(By.desc(monitor)))
-        assertTrue(device.hasObject(By.descStartsWith("Beat confidence")))
-        assertTrue(device.hasObject(By.descStartsWith("Bar confidence")))
-        assertTrue(device.hasObject(By.descStartsWith("Phrase confidence")))
-        assertTrue(device.takeScreenshot(File(evidence,"tablet-fullscreen-monitor.png")))
     }
     @Test fun kaleidoscopeControlsSaveRecallAndNewSceneIdsPersist() {
         launch(Scene.KALEIDOSCOPE, audioEnabled=true)
@@ -84,9 +99,10 @@ class TabletDeviceTest {
         click("Tune")
         assertTrue(device.hasObject(By.desc("Fractal detail")))
         if (context.resources.configuration.smallestScreenWidthDp>=600) {
+            device.findObject(By.desc("Expand timing")).click(); SystemClock.sleep(300); refresh()
             val sidebar=device.findObject(By.desc("Manual timing panel")).visibleBounds
             assertFalse(android.graphics.Rect.intersects(sidebar,device.findObject(By.desc("Tuning panel")).visibleBounds))
-            assertFalse(android.graphics.Rect.intersects(sidebar,device.findObject(By.desc("Tablet song and timing monitor")).visibleBounds))
+            assertFalse(device.hasObject(By.desc("Tablet song and timing monitor")))
             assertTrue(device.hasObject(By.text("Beat starts here")))
             assertTrue(device.hasObject(By.text("Phrase starts here")))
             assertTrue(device.takeScreenshot(File(evidence,"tablet-equalizer-timing.png")))
@@ -95,7 +111,7 @@ class TabletDeviceTest {
         val store=SettingsStore(context)
         val look=VisualSettings.defaults(Scene.KALEIDOSCOPE).copy(kaleidoscopeShape=2,kaleidoscopeSpace=1.4f)
         store.saveLook(look)
-        assertEquals(look,store.loadLook(Scene.KALEIDOSCOPE,look.source))
+        assertEquals(look.copy(audioEnabled = true), store.loadLook(Scene.KALEIDOSCOPE, look.source))
         store.save(VisualSettings.defaults(Scene.MANDELBROT))
         assertEquals(Scene.MANDELBROT,store.load().scene)
     }

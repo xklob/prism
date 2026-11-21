@@ -24,6 +24,55 @@ const observeRecording = (page) =>
 const waitForRecording = (page) =>
   expect.poll(() => page.evaluate(() => window.encodedChunks), { timeout: 20000 }).toBeGreaterThanOrEqual(2);
 
+test('Immerse shows only the visual and restores the tablet transport, waveform and active recorder', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1024, height: 768 });
+  await observeRecording(page);
+  await open(page);
+  await tab(page, 'Audio').click();
+  await page.getByLabel('Source', { exact: true }).selectOption('file');
+  await page.locator('#file').setInputFiles(await musicFile());
+  await button(page, 'Play track').click();
+  await page.getByLabel('Track waveform', { exact: true }).check();
+  await button(page, 'Record session').click();
+  await button(page, 'Immerse').click();
+  const canvas = page.locator('#canvas');
+  const checkVisual = async () => {
+    await expect(canvas).toBeVisible();
+    await expect(
+      page.locator(
+        'button:visible, #fps:visible, #monitor:visible, #notice:visible, #wave-panel:visible, #transport:visible, .stage-caption:visible'
+      )
+    ).toHaveCount(0);
+    expect(
+      await canvas.evaluate((el) => {
+        const bounds = el.getBoundingClientRect();
+        return (
+          bounds.x === 0 && bounds.y === 0 && bounds.width === innerWidth && bounds.height === innerHeight
+        );
+      })
+    ).toBe(true);
+  };
+  await checkVisual();
+  await page.mouse.move(260, 240);
+  await page.mouse.down();
+  await page.mouse.move(340, 260, { steps: 8 });
+  await page.mouse.up();
+  await checkVisual();
+  await waitForRecording(page);
+  await canvas.click();
+  await expect(button(page, 'Stop recording')).toBeVisible();
+  await expect(button(page, 'Pause track')).toBeVisible();
+  await expect(page.locator('#wave-panel')).toBeVisible();
+  await button(page, 'Stop recording').click();
+  await page.setViewportSize({ width: 800, height: 1100 });
+  await button(page, 'Immerse').click();
+  await checkVisual();
+  await page.keyboard.press('Escape');
+  await expect(button(page, 'Immerse')).toBeFocused();
+});
+
 test('the graphics error leaves audio and playback controls accessible', async ({ page }) => {
   await page.addInitScript(() => {
     const getContext = HTMLCanvasElement.prototype.getContext;

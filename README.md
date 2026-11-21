@@ -4,7 +4,7 @@
 
 An audio-reactive visualizer for Android and the web. Four patterns share geometry, color controls, and beat-driven effects. A portable Windows controller can synchronize a crowd show.
 
-[Download prism 1.16.0](https://github.com/xklob/prism/releases/tag/v1.16.0) for the standalone web bundle, signed Android APK, and Windows controller. The [web guide](web/README.md) covers running it on localhost or your own HTTPS host.
+[Download prism 1.16.1](https://github.com/xklob/prism/releases/tag/v1.16.1) for the standalone web bundle, signed Android APK, and Windows controller. The [web guide](web/README.md) covers running it on localhost or your own HTTPS host.
 
 ## Web app
 
@@ -16,22 +16,22 @@ This is an actual desktop Chromium capture of the standalone app in ambient mode
 
 ## Screenshots
 
-Landscape tablet: the selected pattern and its controls share a dark translucent panel. Playback stays at top left; recording and FPS have separate space at top right.
+On a landscape tablet, all four patterns fit in the right panel. Recording and FPS share the top-right row. Tap **Immerse** to fill the screen with the visual.
 
-![Kaleidoscope with a readable control panel on a landscape tablet](docs/screenshots/tablet-home-panel.png)
+![All four pattern choices in the compact tablet control panel](docs/screenshots/tablet-home-panel.png)
 
-Phone portrait: the title and controls stay readable over bright visuals. The selected pattern scrolls into view automatically; detailed setting help remains available from ⓘ.
+Phone portrait keeps the selected pattern in view. Tap ⓘ for setting help.
 
 <p>
   <img src="docs/screenshots/phone-home-panel.png" width="270" alt="Kaleidoscope selected in the phone control panel, with separate recording and FPS controls">
   <img src="docs/screenshots/phone-setting-help.png" width="270" alt="A detailed setting explanation in a tappable help popup on a phone">
 </p>
 
-Tablet sidebars minimize independently; the song and timing monitor stays at bottom left.
+**Immerse** on the tablet. Tap the picture or use Back to return to the controls.
 
-![Both tablet sidebars minimized into edge handles](docs/screenshots/tablet-minimized.png)
+![Kaleido filling the tablet screen in Immerse](docs/screenshots/tablet-immerse.png)
 
-These are unedited Android 16 emulator captures at phone and tablet window sizes. These views show 1.14.0. No audio capture is connected in these views. On-screen FPS reflects the emulator, not physical-device performance.
+The tablet images show prism 1.16.1 on an Android 16 Pixel Tablet emulator. The phone images above are from 1.14.0. Frame rates shown are emulator measurements.
 
 Global bloom and blur controls, shared across all four patterns:
 
@@ -62,13 +62,13 @@ The four patterns work independently of audio. **React to audio** is remembered 
 ## Use
 
 1. [Download the APK from GitHub Releases](https://github.com/xklob/prism/releases/latest) and install it on an Android device.
-2. Select a pattern. Swipe the cards or use the arrow buttons to browse; the current selection stays visible. The title, audio switch, and actions share a dark translucent panel. Short phone landscape windows use compact cards and a **⋮** menu for **App settings** and **Join crowd show**.
+2. Select a pattern. Tablets show all four choices together. On phones, swipe the cards or use the available pattern arrows. The title, audio switch, and actions share a dark translucent panel. Short phone landscape windows use compact cards and a **⋮** menu for **App settings** and **Join crowd show**.
 3. To follow music, enable **React to audio**, choose **Microphone** or **System audio**, then **Connect audio**. Choose **Local file** to analyze and play a track on the device. Leave the switch off for ambient animation.
 4. Open **Tune** for controls in a semi-transparent panel over the full-size visual. Landscape and tablet windows use a wider right-side panel; smaller windows use a bottom panel. The heading, tabs, and actions stay together while the settings scroll. The uncovered visual stays unchanged. While dragging a slider, other controls fade away. On tablets, **Minimize** collapses settings into an edge handle; the timing sidebar collapses independently. Expand to restore the selected page and scroll position. On phones, **Hide** removes the controls until **Show controls** is tapped. **Done** returns to the scene browser. **App settings** contains shared input, song, and display preferences.
-5. Tap **Immerse** for fullscreen. Tap the visual or use Back to restore the controls. Drag the visual to shift its center.
-6. Tap **Record session** at the top right. It records the connected audio source shown on the button, or a **Silent video** if none is connected. Tap **Stop** to save. The control stays visible in fullscreen and while tuning.
+5. Tap **Immerse** for edge-to-edge visuals. Tap the visual or press Back to restore all controls. Drag to shift the pattern while staying immersed.
+6. Tap **Record session** at the top right. It records the connected audio source shown on the button, or a **Silent video** if none is connected. Tap **Stop** to save. Recording continues in Immerse. Tap the visual to reach **Stop**.
 
-Measured **FPS** stays visible below the recording control at the top right, including fullscreen. In short phone landscape windows it sits beside the recording control. Panels reserve the controls' measured height so larger text does not make them overlap. The badge is excluded from recorded video. The launcher uses a scalable RGB mandala, with a monochrome version for Android themed icons and notifications.
+Measured **FPS** appears next to the recording control on tablets and short landscape phones. Other windows show it below the recording control. Panels reserve the controls' measured height so larger text does not make them overlap. The badge is excluded from recorded video. The launcher uses a scalable RGB mandala, with a monochrome version for Android themed icons and notifications.
 
 System audio follows media/game playback from compatible apps, including playback through headphones. Grant Android's audio permission and device capture consent, then play music. The projection permission captures audio; prism renders its own video frames directly and never records other apps' screens. Some apps prohibit playback capture. Switch to the microphone if their audio remains silent. Phone calls are not captured. Android documents these limitations at <https://developer.android.com/media/platform/av-capture>.
 
@@ -102,7 +102,7 @@ Choose **Local file** under **React to audio** or **App settings → Audio**, th
 
 The timing map uses later confident observations to fill acquisition gaps and bridge quieter sections. A track summary shows its dominant estimated tempo; playback can follow local tempo changes. Beat, bar, and phrase confidence stays visible in the tablet monitor. Uncertain audio can have no confident grid, and phrase boundaries remain unresolved when the music provides insufficient evidence. File start is not assumed to be a phrase boundary.
 
-The top-left player provides restart, play/pause, and a ten-second forward seek. **Track waveform** opens a separate bottom panel with amplitude, playhead, and estimated beat/bar/phrase markers. It defaults to on for tablets and off for phones, then remembers your choice. Tap or drag the waveform to seek, or use its accessibility seek action. **HIDE** closes it; enable it again in local-file settings. The waveform reserves space below settings and the tablet monitor and stays available in fullscreen. It is excluded from recordings.
+The top-left player provides restart, play/pause, and a ten-second forward seek. **Track waveform** opens a separate bottom panel with amplitude, playhead, and estimated beat/bar/phrase markers. It defaults to on for tablets and off for phones, then remembers your choice. Tap or drag the waveform to seek, or use its accessibility seek action. **HIDE** closes it; enable it again in local-file settings. The waveform reserves space below settings and the tablet monitor and returns when you leave Immerse. It is excluded from recordings.
 
 Local-file settings have their own **Auto / 3 / 4** meter and **8 / 16 / 32** bar phrase choices. **ANALYZE AGAIN** applies changed analysis settings or reloads the last selected track. Analysis has progress and cancel controls. Keep prism open while it finishes. Existing manual tap controls apply to live inputs; the local player uses its precomputed map.
 
@@ -119,9 +119,9 @@ These are unedited 1.15.0 Android 16 emulator captures playing an original synth
 
 ## Playback controls
 
-Previous, play/pause, and next stay at the top left in the normal view, while tuning, and in fullscreen. Tap **Enable playback** and enable **prism playback controls** in Android's Notification access settings. Existing playback-info access also enables the controls.
+Previous, play/pause, and next appear at the top left for an active player. On tablets, open **App settings → Song → Allow playback info access**. On phones, **Enable playback** also opens Android’s Notification access settings. Enable **prism playback controls** there. Existing playback-info access also enables the controls.
 
-The controls prefer a playing session in Android’s priority order, then retain a paused or restartable player when nothing is playing. They show its title and disable actions the player does not support. The player decides what Previous means, including whether to restart the current track or skip back. Play rewinds a seekable track that has reached its end before restarting it. No active player leaves the buttons disabled. Closing the player’s session or revoking access clears stale controls.
+The controls prefer a playing session in Android’s priority order, then retain a paused or restartable player when nothing is playing. They show its title and disable actions the player does not support. The player decides what Previous means, including whether to restart the current track or skip back. Play rewinds a seekable track that has reached its end before restarting it. On tablets the transport disappears when the player closes. On phones the buttons become disabled. Closing the player’s session or revoking access clears stale controls.
 
 Transport uses [Android media-session controls](https://developer.android.com/reference/android/media/session/MediaController.TransportControls). It works with Song assist off and without a microphone/system-audio connection. It does not read notification messages, start audio capture, enable online lookup, or bypass playback-capture restrictions. The panel is excluded from recorded video. Crowd views keep their existing controller-driven layout.
 
@@ -178,7 +178,7 @@ The scene uses 32–72 ray steps and bounds the on-screen render to a 1,440-pixe
 
 ## Tablet display and new patterns
 
-Tablet windows show the current song, input level, BPM, beat/bar confidence, and phrase confidence in a semi-transparent bottom-left monitor. It remains visible while tuning, hiding controls, and in fullscreen. Toggle it with **App settings → Display → Tablet monitor**. This global preference survives scene changes and app restarts. The monitor is excluded from session recordings. Manual tempo, beat/bar alignment, phrase alignment, and Auto controls live in a separate left-side timing box above the monitor while controls are shown. Fullscreen hides the timing controls but keeps the monitor. Narrow split-screen windows use the compact layout.
+On tablets, the bottom-left monitor appears when audio is connected or a local track is loaded. It shows song and timing information beside the pattern controls. Toggle it in **App settings → Display → Tablet monitor**. **Timing ›** opens manual tempo, beat, bar, and phrase controls for live inputs. The monitor and timing panel share one column and leave the center of the picture open. Immerse hides both. Playback and recording continue while immersed.
 
 **Mandelbrot** follows a smooth out-and-back zoom into a fixed boundary location. **Zoom speed** controls travel and **Zoom depth** controls its range. Iterations, magnification, rotation, line weight, and palettes remain adjustable. Zoom is bounded to preserve mobile floating-point detail; this is not an unlimited deep-zoom explorer.
 
@@ -263,6 +263,8 @@ The debug APK is in `app/build/outputs/apk/debug/` and uses package `com.caleb.p
 
 ## Verification
 
+Version 1.16.1 adds visual-only Immerse and a compact tablet layout. See the [1.16.1 release notes](docs/releases/1.16.1.md).
+
 Version 1.16.0 adds the self-hostable web app and signed browser crowd participation. See the [release notes](docs/releases/1.16.0.md) for browser, controller, and Android checks.
 
 Version 1.15.0 passed 100 JVM tests and release build/lint. Local-file device checks cover Android file selection, complete analysis before playback, the expected 128 BPM musical fixture, 44.1 kHz conversion, mono AAC and stereo WAV, uncertain sustained tones, cancellation, invalid files, waveform seeking, playback pause/resume and end, background playback, and stereo soundtrack recording without microphone access. Phone/tablet layout and signed-build checks are documented in [the release notes](docs/releases/1.15.0.md). Physical playback latency and real-song phrase accuracy remain unverified.
@@ -291,11 +293,11 @@ Additional regression cases cover weighted tempo history, drumless bridges with 
 
 Song-assistance tests cover playback clocks, seeking and speed changes, exact-recording matching, ambiguous/remix rejection, request budgets, mono/stereo recognition buffers and WAV timestamps, stale/silent input, incorrect tempo priors, manual precedence, phrase uncertainty, repeated structural changes, and loss of bar alignment. `SongDeviceTest` exercises a separate test-app media session through Android's actual notification listener, a live ReccoBeats lookup, seek/pause/speed changes, access revocation, encrypted key storage, and overlay preferences. Its fixture service exists only in the test APK. An opt-in `songNetwork=true` check sends only a synthetic tone and deliberately invalid key to AudD to verify transport and authentication failure handling. It does not establish Spotify/YouTube-specific compatibility or AudD recognition accuracy on real room recordings.
 
-`TabletDeviceTest` checks panel reachability, landscape/portrait separation, fullscreen monitor visibility, the persistent toggle, and saved visual settings at Pixel Tablet window dimensions. `PrismDeviceTest` checks Android ONNX against reference predictions, processes a full musical PCM fixture, measures analysis speed and phase error, and exercises actual Android system capture. It also checks capture lifecycle, per-pattern toggles, migration, saved looks, immersive controls, and landscape layout. The shipped shader is rendered at fixed phases to verify distinct beat, bar, and musical-motion effects in all geometric patterns, exact RGB inversion, full-frame white flash, and fade interpolation; audio off must produce exactly the original ambient image. Captured music must produce one flash per 4-beat bar. Pixel comparisons verify that the settings panel preserves the uncovered preview and live adjustments. Evidence is written to the app's external `files/review` directory.
+`TabletDeviceTest` checks panel reachability, landscape/portrait separation, visual-only Immerse and restoration of the live monitor, the persistent toggle, and saved visual settings at Pixel Tablet window dimensions. `PrismDeviceTest` checks Android ONNX against reference predictions, processes a full musical PCM fixture, measures analysis speed and phase error, and exercises actual Android system capture. It also checks capture lifecycle, per-pattern toggles, migration, saved looks, immersive controls, and landscape layout. The shipped shader is rendered at fixed phases to verify distinct beat, bar, and musical-motion effects in all geometric patterns, exact RGB inversion, full-frame white flash, and fade interpolation; audio off must produce exactly the original ambient image. Captured music must produce one flash per 4-beat bar. Pixel comparisons verify that the settings panel preserves the uncovered preview and live adjustments. Evidence is written to the app's external `files/review` directory.
 
 The Android pipeline also checks a musical fixture followed by a drumless two-tone bridge and resumed music, and processes a quiet synthetic room recording with delayed reflections and a volume drop. Tempo and phase are checked against the original beat grid. Separate tests reject a steady tone, silence, and unstructured noise.
 
-Recording tests verify timeline alignment, capture gaps, pre-roll, stereo channel order, and clock rounding. `RecordingDeviceTest` exports actual MediaCodec/MediaMuxer videos from system and microphone capture, checks both encoded tracks and increasing timestamps, decodes animated frames, and exercises ambient recording, live pattern/tuning changes, pause, reactivity changes, immersive stop, background saving, repeat recording, silent video without opening audio, capture interruption, and sharing. Its system-audio fixture plays distinct left/right tones, then decodes the exported AAC to check sound levels and channel separation. Test recordings use synthetic audio and are not bundled with the app.
+Recording tests verify timeline alignment, capture gaps, pre-roll, stereo channel order, and clock rounding. `RecordingDeviceTest` exports actual MediaCodec/MediaMuxer videos from system and microphone capture, checks both encoded tracks and increasing timestamps, decodes animated frames, and exercises ambient recording, live pattern/tuning changes, pause, reactivity changes, recording through Immerse and restoring Stop, background saving, repeat recording, silent video without opening audio, capture interruption, and sharing. Its system-audio fixture plays distinct left/right tones, then decodes the exported AAC to check sound levels and channel separation. Test recordings use synthetic audio and are not bundled with the app.
 
 ```sh
 ./gradlew :app:connectedDebugAndroidTest
