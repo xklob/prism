@@ -3,25 +3,28 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-    <meta name="theme-color" content="#101110" />
+    <meta name="theme-color" content="#171717" />
     <meta
       name="description"
       content="prism audio-reactive visualizer. Play a local track, tune a pattern, or join a crowd show."
     />
     <meta name="referrer" content="no-referrer" />
-    <link rel="icon" href="./assets/icon.svg" type="image/svg+xml" />
-    <link rel="apple-touch-icon" href="./assets/icon-192.png" />
+    <link rel="icon" href="./assets/favicon.ico" sizes="16x16 32x32 48x48" type="image/x-icon" />
+    <link rel="icon" href="./assets/icon.svg" sizes="any" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="./assets/apple-touch-icon.png" />
     <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="stylesheet" href="./style.css" />
+    <link rel="stylesheet" href="./assets/konami.css" />
     <title>prism</title>
   </head>
   <body>
     <header class="topbar">
       <div class="brand">
-        <img src="./assets/icon.svg" width="32" height="32" alt="" />
+        <img src="./assets/icon.svg" width="32" height="32" data-konami-ink alt="" />
         <h1>prism</h1>
-        <span class="slash">//</span><span class="product">visualizer</span>
+        <span class="slash" aria-hidden="true">//</span><span class="product">visualizer</span>
       </div>
+      <span data-konami-status role="status"></span>
       <div class="toolbar">
         <div class="themes" role="group" aria-label="Theme">
           <button data-theme-choice="system" aria-label="System theme" title="System theme">
@@ -110,7 +113,7 @@
     </main>
     <input id="file" type="file" accept="audio/*,.wav,.flac,.m4a,.mp3,.aac,.ogg,.opus" hidden />
     <div id="notice" role="status" hidden></div>
-    <dialog id="dialog">
+    <dialog id="dialog" aria-labelledby="dialog-title">
       <form method="dialog">
         <h2 id="dialog-title"></h2>
         <div id="dialog-content"></div>
@@ -118,6 +121,7 @@
       </form>
     </dialog>
     <noscript>Enable JavaScript to run prism.</noscript>
+    <script type="module" src="./src/konami.js"></script>
     <script type="module" src="./src/app.js"></script>
   </body>
 </html>

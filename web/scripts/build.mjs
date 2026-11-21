@@ -14,7 +14,6 @@ await Promise.all([
   ...['index.html', 'style.css', 'manifest.webmanifest', 'src'].map((name) =>
     cp(path.join(root, name), path.join(out, name), { recursive: true })
   ),
-  cp(path.join(root, '../docs/icon.svg'), path.join(out, 'assets/icon.svg')),
   cp(path.join(root, 'assets'), path.join(out, 'assets'), { recursive: true }),
   cp(
     path.join(

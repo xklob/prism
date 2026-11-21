@@ -4,7 +4,7 @@ prism runs in a browser on desktop, tablet, or phone. The four patterns use the 
 
 ## Run the release
 
-Download **prism-web-1.16.1.zip** from [GitHub Releases](https://github.com/xklob/prism/releases/tag/v1.16.1) and extract it. With Node.js installed, open a terminal in the extracted directory and run:
+[Open prism](https://prism.klob.io/) to use the hosted app. It runs in the browser without signing in. To self-host, download **prism-web-1.16.2.zip** from [GitHub Releases](https://github.com/xklob/prism/releases/tag/v1.16.2) and extract it. With Node.js installed, open a terminal in the extracted directory and run:
 
 ```sh
 node serve.mjs --open
