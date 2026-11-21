@@ -59,7 +59,9 @@ class PlaybackControlsDeviceTest {
         if (tablet) {
             assertFalse(device.hasObject(By.desc("System playback controls")))
             tap("App settings", false); tap("Song", false)
-            assertTrue(device.hasObject(By.text("Allow playback info access")))
+            await("Song settings expose the system playback permission") {
+                device.hasObject(By.text("Allow playback info access"))
+            }
             tap("Done", false)
         } else await("Access entry is visible") { device.hasObject(By.text("ENABLE PLAYBACK")) }
         device.executeShellCommand("cmd notification allow_listener $listener")
